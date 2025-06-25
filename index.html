@@ -1,0 +1,500 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Loader, Upload, BookOpen, Volume2, Mic, FileText, ChevronLeft, ChevronRight, X, ArrowRight, Lightbulb, CheckCircle, XCircle, RefreshCw, Sparkles, Send } from 'lucide-react';
+
+// --- Color Palette (Morandi) ---
+const colors = {
+  bg: '#F4F2F0',
+  card: '#FFFFFF',
+  card_alt: '#EAE7E2',
+  text: '#5B5B5B',
+  primary: '#B2B8B4',
+  accent: '#D4C8BE',
+  shadow: 'rgba(91, 91, 91, 0.1)',
+  success: '#6A994E',
+  danger: '#BC4749',
+};
+
+// --- TTS Utility ---
+let voices = [];
+const populateVoices = () => {
+    voices = window.speechSynthesis.getVoices();
+};
+populateVoices();
+if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = populateVoices;
+}
+const playText = (text) => {
+    if (!text || typeof window.speechSynthesis === 'undefined') return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const bestVoice = voices.find(voice => voice.name === 'Google US English' && voice.lang.startsWith('en')) ||
+                      voices.find(voice => voice.lang === 'en-US') ||
+                      voices.find(voice => voice.lang.startsWith('en'));
+    if (bestVoice) utterance.voice = bestVoice;
+    utterance.pitch = 1;
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+};
+
+// --- Main App Component (Router) ---
+export default function App() {
+  const [page, setPage] = useState('vocabulary');
+  const [wordList, setWordList] = useState([]);
+  const [allApiData, setAllApiData] = useState({});
+  const wordsForQuiz = wordList.filter(word => allApiData[word] && !allApiData[word].error).map(w => allApiData[w].word);
+
+  return (
+    <div className="min-h-screen font-sans" style={{ backgroundColor: colors.bg, color: colors.text }}>
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 max-w-5xl">
+        <Header />
+        <Nav page={page} setPage={setPage} activityDisabled={wordsForQuiz.length < 2} />
+        <main>
+          {page === 'vocabulary' && (
+            <VocabularyPage {...{ wordList, setWordList, allApiData, setAllApiData }} />
+          )}
+          {page === 'quiz' && <QuizPage words={wordsForQuiz} />}
+          {page === 'writing' && <CreativeWritingPage words={wordsForQuiz} />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// --- Navigation ---
+const Nav = ({ page, setPage, activityDisabled }) => (
+    <div className="flex justify-center my-6">
+        <div className="p-1 rounded-lg flex flex-col sm:flex-row gap-2" style={{backgroundColor: colors.card_alt}}>
+            <button onClick={() => setPage('vocabulary')} className={`px-4 py-2 rounded-md font-semibold transition-all ${page === 'vocabulary' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'vocabulary' ? colors.primary : 'transparent'}}>
+                Vocabulary Revision
+            </button>
+            <button onClick={() => setPage('quiz')} disabled={activityDisabled} className={`px-4 py-2 rounded-md font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${page === 'quiz' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'quiz' ? colors.primary : 'transparent'}}>
+                Cloze Quiz
+            </button>
+             <button onClick={() => setPage('writing')} disabled={activityDisabled} className={`px-4 py-2 rounded-md font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${page === 'writing' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'writing' ? colors.primary : 'transparent'}}>
+                Creative Writing
+            </button>
+        </div>
+        {activityDisabled && (page === 'quiz' || page === 'writing') && <p className="absolute mt-14 sm:mt-20 text-xs text-center w-full max-w-5xl left-1/2 -translate-x-1/2">Define at least 2 words to unlock this activity.</p>}
+    </div>
+);
+
+// --- Helper Function to fetch data ---
+const fetchWordData = async (wordToFetch, setAllApiData) => {
+    if (!wordToFetch || !wordToFetch.trim()) return;
+    let phonetics = 'N/A', audioUrl = null, dictionaryWord = wordToFetch;
+    
+    try {
+        console.log(`Fetching data for: ${wordToFetch}`);
+        try {
+            const dictionaryResponse = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${wordToFetch}`);
+            if (dictionaryResponse.ok) {
+                const dictionaryData = await dictionaryResponse.json();
+                phonetics = dictionaryData[0]?.phonetics.find(p => p.text)?.text || 'N/A';
+                audioUrl = dictionaryData[0]?.phonetics.find(p => p.audio)?.audio;
+                dictionaryWord = dictionaryData[0].word;
+            } else {
+                console.warn(`Dictionary API could not find "${wordToFetch}".`);
+            }
+        } catch (dictionaryError) {
+            console.warn(`Error fetching from Dictionary API for "${wordToFetch}":`, dictionaryError.message);
+        }
+
+        const prompt = `For the English term "${wordToFetch}", generate a JSON object with: "syllables" (array of strings), "collocations" (array of 2 phrases), and "examples" (array of 2 sentences, >8 words each).`;
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" }};
+        const apiKey = "";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+        const geminiResponse = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!geminiResponse.ok) throw new Error('Failed to get word details from AI model.');
+        const geminiResult = await geminiResponse.json();
+        const generatedText = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!generatedText) throw new Error('Unexpected response structure from AI model.');
+        
+        const geminiData = JSON.parse(generatedText);
+        setAllApiData(prev => ({...prev, [wordToFetch]: {
+            word: dictionaryWord, phonetics, audioUrl,
+            syllables: geminiData.syllables || [], collocations: geminiData.collocations || [], examples: geminiData.examples || [],
+        }}));
+    } catch (err) {
+        console.error(`Critical error fetching ${wordToFetch}:`, err.message);
+        setAllApiData(prev => ({...prev, [wordToFetch]: { word: wordToFetch, error: err.message }}));
+    }
+};
+
+// --- Page 1: Vocabulary Revision ---
+const VocabularyPage = ({ wordList, setWordList, allApiData, setAllApiData }) => {
+  const [word, setWord] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [inputError, setInputError] = useState('');
+
+  const activeWord = wordList.length > 0 ? wordList[currentIndex] : null;
+  const currentApiData = activeWord ? allApiData[activeWord] : null;
+
+  const processNewWordList = useCallback(async (words) => {
+    setWordList(words);
+    setCurrentIndex(0);
+    const newWordsToFetch = words.filter(w => !allApiData[w]);
+    if (newWordsToFetch.length === 0) return;
+    setIsLoading(true);
+    for (const wordToFetch of newWordsToFetch) {
+        await fetchWordData(wordToFetch, setAllApiData);
+    }
+    setIsLoading(false);
+  }, [allApiData, setAllApiData, setWordList]);
+
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    const wordsFromInput = word.split(',').map(w => w.trim()).filter(Boolean);
+    if (wordsFromInput.length === 0) {
+        setInputError("Please enter at least one word.");
+        return;
+    }
+    setInputError('');
+    processNewWordList(wordsFromInput);
+  };
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && (file.type === "text/plain" || file.type === "text/csv")) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const words = e.target.result.split('\n').map(line => line.split(',')[0].trim()).filter(Boolean);
+        if (words.length > 0) {
+            setWord(''); setInputError(''); processNewWordList(words);
+        } else {
+            setInputError("The uploaded file is empty or contains no valid words.");
+        }
+      };
+      reader.readAsText(file);
+    } else {
+        setInputError("Please upload a valid .txt or .csv file.");
+    }
+    event.target.value = null; 
+  };
+  
+  const clearWordList = () => { setWordList([]); setCurrentIndex(0); setWord(''); }
+  const navigateWords = (direction) => setCurrentIndex(prev => Math.max(0, Math.min(wordList.length - 1, prev + direction)));
+
+  return (
+    <>
+      <WordInput {...{word, setWord, onSubmit: handleFormSubmit, onFileUpload: handleFileUpload, isLoading, inputError, setInputError}} />
+      {isLoading && <LoadingSpinner message="Defining all words in your list..." />}
+      {!isLoading && wordList.length > 0 && (
+        <ListNavigator {...{clearWordList, navigateWords, currentIndex, wordList, isLoading}} />
+      )}
+      {!isLoading && currentApiData && (
+        currentApiData.error ? 
+        <WordErrorMessage word={currentApiData.word} message={currentApiData.error} /> :
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+          <PronunciationCard data={currentApiData} />
+          <UsageCard data={currentApiData} />
+        </div>
+      )}
+      {!isLoading && wordList.length === 0 && <WelcomeMessage />}
+    </>
+  );
+};
+
+// --- Page 2: Cloze Quiz ---
+const QuizPage = ({ words }) => {
+    const [quizData, setQuizData] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [quizMode, setQuizMode] = useState('match');
+    const [userAnswers, setUserAnswers] = useState([]);
+    const [results, setResults] = useState(null);
+    const [selectedWord, setSelectedWord] = useState(null);
+
+    const generateQuiz = useCallback(async () => {
+        setIsLoading(true); setError(null); setQuizData(null); setResults(null);
+        const prompt = `You are an English teacher creating a cloze quiz. Given a list of vocabulary words: ${words.join(', ')}.
+        1. Create a cohesive passage of about 150 words that uses these vocabulary words. The words might need to be in different forms (e.g., 'react' might become 'reaction' or 'reactive').
+        2. Structure your response as a JSON object with two keys: "passage_template" and "blanks".
+        3. For "passage_template", provide the passage but replace each used vocabulary word with a placeholder like {blank_0}, {blank_1}, etc.
+        4. For "blanks", provide an array of objects. Each object corresponds to a placeholder in the passage and must have two keys: "correct_form" (the exact word used) and "hint" (the original base word).`;
+        
+        try {
+            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" }};
+            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+            if (!response.ok) { let errorText = `Failed to generate quiz from AI (Status: ${response.status}).`; try { const errorData = await response.json(); const apiMessage = errorData?.error?.message; if (apiMessage) { errorText = `AI Error: ${apiMessage}`; if (apiMessage.includes('SAFETY')) { errorText = "The quiz could not be generated due to the vocabulary content. Please try a different list of words."}}} catch (e) { errorText += " Could not read error details."} throw new Error(errorText); }
+
+            const result = await response.json();
+            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Could not extract passage from AI response.");
+
+            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
+            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
+            
+            try {
+                const parsedQuiz = JSON.parse(text);
+                const { passage_template, blanks } = parsedQuiz;
+                if (!passage_template || !blanks || !Array.isArray(blanks)) { throw new Error("AI response did not match the required format."); }
+                const templateParts = passage_template.split(/{blank_\d+}/);
+                const shuffledBank = [...new Set(blanks.map(b => b.correct_form))].sort(() => Math.random() - 0.5);
+                const hintBank = [...new Set(blanks.map(b => b.hint))].sort(() => Math.random() - 0.5);
+                setQuizData({ passage: passage_template.replace(/{blank_(\d+)}/g, (match, index) => blanks[parseInt(index)].correct_form), templateParts, blanks, shuffledBank, hintBank });
+                setUserAnswers(new Array(blanks.length).fill(''));
+            } catch (parsingError) { console.error("Failed to parse JSON from AI response:", parsingError); console.error("Raw text received:", text); throw new Error("The AI returned an invalid format. Please try generating the quiz again."); }
+        } catch (err) { console.error(err); setError(err.message || "An unexpected error occurred."); } finally { setIsLoading(false); }
+    }, [words]);
+    
+    const handleAnswerChange = (index, value) => { const newAnswers = [...userAnswers]; newAnswers[index] = value; setUserAnswers(newAnswers); };
+    const handleMatch = (blankIndex) => { if (selectedWord) { handleAnswerChange(blankIndex, selectedWord); setSelectedWord(null); }};
+    const checkAnswers = () => { const newResults = quizData.blanks.map((blank, index) => (userAnswers[index] || "").toLowerCase().trim() === blank.correct_form.toLowerCase()); setResults(newResults); };
+    const resetQuiz = () => { setUserAnswers(new Array(quizData.blanks.length).fill('')); setResults(null); setSelectedWord(null); };
+
+    if (isLoading) return <LoadingSpinner message="Generating your interactive quiz..." />;
+    if (error) return <ErrorMessage message={error} />;
+    return ( <div className="p-6 rounded-lg shadow-md mt-4 animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>{!quizData ? ( <div className="text-center"><Lightbulb size={40} className="mx-auto mb-4" style={{color: colors.primary}} /><h2 className="text-2xl font-light mb-2">Ready to Test Your Knowledge?</h2><p className="mb-6">Click the button below to generate a cloze quiz using your selected words: <br/> <span className="font-semibold">{words.join(', ')}</span></p><button onClick={generateQuiz} className="px-6 py-3 rounded-md text-white font-semibold transition-colors" style={{ backgroundColor: colors.primary }}>Generate Quiz</button></div>) : (<div><div className="flex flex-wrap justify-between items-center gap-4 mb-6"><h2 className="text-2xl font-light">Complete the Passage</h2><div className="flex gap-2 items-center">{results && <button onClick={() => playText(quizData.passage)} className="p-2 rounded-full transition-colors" style={{backgroundColor: colors.accent}} title="Listen to Passage"><Volume2 size={20} style={{ color: colors.text }} /></button>}<button onClick={resetQuiz} className="p-2 rounded-full transition-colors" style={{backgroundColor: colors.accent}} title="Reset Quiz"><RefreshCw size={20} style={{ color: colors.text }} /></button><div className="p-1 rounded-lg flex text-sm" style={{backgroundColor: colors.card_alt}}><button onClick={() => setQuizMode('match')} className={`px-2 py-1 rounded-md ${quizMode === 'match' ? 'text-white shadow' : ''}`} style={{backgroundColor: quizMode === 'match' ? colors.primary : 'transparent'}}>Match</button><button onClick={() => setQuizMode('type')} className={`px-2 py-1 rounded-md ${quizMode === 'type' ? 'text-white shadow' : ''}`} style={{backgroundColor: quizMode === 'type' ? colors.primary : 'transparent'}}>Type</button></div></div></div>{(quizMode === 'match' || quizMode === 'type') && (<div className="mb-6 p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}><p className="font-semibold mb-2 text-center">{quizMode === 'match' ? 'Word Bank (Correct Forms)' : 'Hint Bank (Base Words)'}</p><div className="flex flex-wrap justify-center gap-2">{(quizMode === 'match' ? quizData.shuffledBank : quizData.hintBank).map((word, index) => (<button key={index} onClick={() => quizMode === 'match' && setSelectedWord(word)} className={`px-3 py-1 rounded-md transition-all border-2 ${selectedWord === word && quizMode === 'match' ? 'border-blue-500' : 'border-transparent'} ${quizMode === 'type' ? 'cursor-default' : ''}`} style={{backgroundColor: colors.accent}}>{word}</button>))}</div></div>)}<p className="text-lg leading-loose">{quizData.templateParts.map((part, i) => (<React.Fragment key={i}>{part}{i < quizData.blanks.length && (() => { const resultIcon = results ? (results[i] ? <CheckCircle size={16} className="text-green-600 inline-block ml-1"/> : <XCircle size={16} className="text-red-600 inline-block ml-1"/>) : null; if (quizMode === 'type') { return (<span className="inline-block mx-1 relative"><input type="text" value={userAnswers[i] || ''} onChange={(e) => handleAnswerChange(i, e.target.value)} disabled={!!results} className="w-36 p-1 rounded-md text-center border-b-2 focus:outline-none" style={{borderColor: colors.primary, backgroundColor: colors.bg}}/>{resultIcon && <span className="absolute -top-2 -right-2">{resultIcon}</span>}</span>); } else { return (<span className="inline-block mx-1 relative"><button onClick={() => handleMatch(i)} disabled={!!results} className="w-36 p-1 rounded-md text-center border-b-2" style={{borderColor: colors.primary, backgroundColor: userAnswers[i] ? colors.accent : colors.bg}}>{userAnswers[i] || '[ . . . ]'}</button>{resultIcon && <span className="absolute -top-2 -right-2">{resultIcon}</span>}</span>) }})()}</React.Fragment>))}</p><div className="mt-8 text-center">{!results ? <button onClick={checkAnswers} className="px-6 py-3 rounded-md text-white font-semibold transition-colors" style={{ backgroundColor: colors.success }}>Check Answers</button> : <div className="p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}><h3 className="text-xl font-semibold">Quiz Complete!</h3><p>You got {results.filter(Boolean).length} out of {results.length} correct.</p><details className="mt-4 text-left"><summary className="cursor-pointer font-semibold" style={{color: colors.primary}}>Show Answers</summary><ul className="mt-2 list-decimal list-inside space-y-1 text-sm">{quizData.blanks.map((blank, index) => (<li key={index}><span className="font-semibold">{blank.correct_form}</span> (Base word: {blank.hint})</li>))}</ul></details></div>}</div></div>)}</div>);
+};
+
+// --- Page 3: Creative Writing Challenge ---
+const CreativeWritingPage = ({ words }) => {
+    const [prompt, setPrompt] = useState(null);
+    const [userText, setUserText] = useState('');
+    const [feedback, setFeedback] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const generatePrompt = useCallback(async () => {
+        setIsLoading(true); setError(''); setFeedback(null); setUserText('');
+        const request = `As an English teacher, create a "story starter" kit to help a student write a short paragraph.
+        The student's vocabulary list is: ${words.join(', ')}.
+
+        Your response must be a JSON object containing three keys: "scenario", "guiding_questions", and "words_to_include".
+        - "scenario": A brief, one-sentence situation (15-25 words).
+        - "guiding_questions": An array of 2-3 open-ended questions to inspire the student.
+        - "words_to_include": An array of 3-4 specific words from the provided vocabulary list that fit the scenario well.
+        
+        Example JSON output:
+        {
+          "scenario": "A detective discovers a mysterious, glowing object during an investigation in an old library.",
+          "guiding_questions": ["What is the object's origin?", "How does the detective react?", "What is the first step in the new investigation?"],
+          "words_to_include": ["reaction", "environment", "discover"]
+        }`;
+
+        try {
+            const payload = { contents: [{ role: "user", parts: [{ text: request }] }], generationConfig: { responseMimeType: "application/json" }};
+            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error("Failed to generate a prompt.");
+            const result = await response.json();
+            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Could not extract prompt from AI response.");
+
+            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
+            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
+            
+            const parsedPrompt = JSON.parse(text);
+            setPrompt(parsedPrompt);
+        } catch (err) {
+            setError(err.message || "An unexpected error occurred.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [words]);
+
+    const getFeedback = useCallback(async () => {
+        if (!userText.trim()) { setError("Please write something before getting feedback."); return; }
+        setIsFeedbackLoading(true); setError(''); setFeedback(null);
+        const request = `As an English teacher, review the following text. The student was given this prompt:
+        - Scenario: "${prompt.scenario}"
+        - They were asked to include these words: ${prompt.words_to_include.join(', ')}
+        
+        Student's text: "${userText}"
+        
+        Provide feedback as a JSON object with three keys: "word_usage", "grammar_and_fluency", and "suggestions".
+        - "word_usage": Comment on how well they used the suggested vocabulary. Note any misuses.
+        - "grammar_and_fluency": Give general feedback on grammar, spelling, and flow.
+        - "suggestions": Offer 1-2 concrete suggestions for improvement.`;
+
+        try {
+            const payload = { contents: [{ role: "user", parts: [{ text: request }] }], generationConfig: { responseMimeType: "application/json" }};
+            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error("Failed to get feedback from the AI.");
+            const result = await response.json();
+            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Could not extract feedback from AI response.");
+
+            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
+            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
+            
+            const parsedFeedback = JSON.parse(text);
+            setFeedback(parsedFeedback);
+        } catch (err) {
+            setError(err.message || "An unexpected error occurred while getting feedback.");
+        } finally {
+            setIsFeedbackLoading(false);
+        }
+    }, [userText, prompt, words]);
+
+
+    return (
+        <div className="p-6 rounded-lg shadow-md mt-4 animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
+            <h2 className="text-2xl font-light mb-4">Creative Writing Challenge</h2>
+            <div className="flex flex-col sm:flex-row gap-4 items-center mb-6 p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}>
+                <div className="flex-grow">
+                    <p className="font-semibold">Your Story Starter:</p>
+                    {isLoading ? <p className="italic">Generating a prompt...</p> : 
+                        !prompt ? <p className="italic">Click the button to get a writing prompt!</p> : (
+                            <div className="space-y-3 mt-2">
+                                <div>
+                                    <h4 className="font-semibold">Scenario:</h4>
+                                    <p className="italic">"{prompt.scenario}"</p>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold">Guiding Questions:</h4>
+                                    <ul className="list-disc list-inside text-sm">
+                                        {prompt.guiding_questions.map((q, i) => <li key={i}>{q}</li>)}
+                                    </ul>
+                                </div>
+                                 <div>
+                                    <h4 className="font-semibold">Words to Include:</h4>
+                                    <div className="flex flex-wrap gap-2 mt-1">
+                                        {prompt.words_to_include.map((w,i) => <span key={i} className="px-2 py-1 text-sm rounded-md" style={{backgroundColor: colors.accent}}>{w}</span>)}
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    }
+                </div>
+                <button onClick={generatePrompt} disabled={isLoading} className="px-4 py-2 rounded-md text-white font-semibold transition-colors flex items-center gap-2 self-start sm:self-center" style={{backgroundColor: colors.primary}}><Sparkles size={18} /> Get New Prompt</button>
+            </div>
+            
+            <textarea
+                value={userText}
+                onChange={(e) => setUserText(e.target.value)}
+                placeholder="Write your story or paragraph here..."
+                rows="8"
+                className="w-full p-3 rounded-md border-2 focus:outline-none transition-colors"
+                style={{borderColor: colors.card_alt, backgroundColor: colors.bg, '--tw-ring-color': colors.primary}}
+            />
+             <div className="text-center mt-4">
+                <button onClick={getFeedback} disabled={!userText || isFeedbackLoading} className="px-6 py-3 rounded-md text-white font-semibold transition-colors flex items-center gap-2 mx-auto disabled:opacity-50" style={{backgroundColor: colors.success}}>
+                    {isFeedbackLoading ? <><Loader className="animate-spin" size={20}/> Analyzing...</> : <><Send size={18}/>Check My Writing</>}
+                </button>
+            </div>
+
+            {error && <ErrorMessage message={error}/>}
+
+            {feedback && (
+                <div className="mt-8 space-y-4">
+                    <h3 className="text-xl font-semibold border-b pb-2" style={{borderColor: colors.card_alt}}>Feedback</h3>
+                    <div>
+                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Word Usage</h4>
+                        <p>{feedback.word_usage}</p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Grammar & Fluency</h4>
+                        <p>{feedback.grammar_and_fluency}</p>
+                    </div>
+                     <div>
+                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Suggestions</h4>
+                        <p>{feedback.suggestions}</p>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+// --- Common & Re-usable Components ---
+const Header = () => (
+  <header className="text-center mb-2">
+    <h1 className="text-4xl sm:text-5xl font-light tracking-wider mb-2" style={{color: colors.text}}>Lingo <span style={{color: colors.primary}}>Deck</span></h1>
+    <p className="text-md" style={{color: colors.text}}>Your calm space for vocabulary revision.</p>
+    <p className="text-xs mt-2" style={{color: colors.text, opacity: 0.6}}>Made by Daphne Lin</p>
+  </header>
+);
+
+const WordInput = ({ word, setWord, onSubmit, onFileUpload, isLoading, inputError, setInputError }) => (
+    <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
+      <form onSubmit={onSubmit} className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="relative w-full">
+            <BookOpen size={20} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: colors.primary }} />
+            <input type="text" value={word} onChange={(e) => { setWord(e.target.value); if(inputError) setInputError(''); }} placeholder="Enter a word, or several separated by commas..." className="w-full pl-10 pr-4 py-3 rounded-md border-2 transition-all duration-300 focus:outline-none" style={{ borderColor: inputError ? colors.danger : colors.card_alt, backgroundColor: colors.bg, '--tw-ring-color': colors.primary }} />
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto">
+            <button type="submit" disabled={isLoading} className="w-1/2 sm:w-auto flex-grow px-6 py-3 rounded-md text-white font-semibold transition-colors disabled:opacity-70" style={{ backgroundColor: colors.primary }}>{isLoading ? '...' : 'Define'}</button>
+            <label htmlFor="file-upload" className="w-1/2 sm:w-auto flex-grow cursor-pointer px-4 py-3 rounded-md font-semibold transition-colors flex items-center justify-center gap-2" style={{ backgroundColor: colors.accent, color: colors.text }}>
+              <Upload size={18} /><span>List</span>
+              <input id="file-upload" type="file" className="sr-only" onChange={onFileUpload} accept=".txt,.csv"/>
+            </label>
+        </div>
+      </form>
+      {inputError && <p className="text-red-600 text-sm mt-2">{inputError}</p>}
+    </div>
+);
+
+const ListNavigator = ({ clearWordList, navigateWords, currentIndex, wordList, isLoading }) => (
+    <div className="my-6 p-3 rounded-lg flex items-center justify-between" style={{backgroundColor: colors.card_alt}}>
+        <div className="flex items-center gap-4">
+            <button onClick={clearWordList} className="p-2 rounded-full hover:bg-red-200 transition-colors" title="Clear word list"><X size={20} className="text-red-500" /></button>
+            <div>
+                <p className="font-semibold text-sm">Reviewing from List</p>
+                <p className="text-xs">{`Word ${currentIndex + 1} of ${wordList.length}`}</p>
+            </div>
+        </div>
+        <div className="flex items-center gap-2">
+            <button onClick={() => navigateWords(-1)} disabled={currentIndex === 0 || isLoading} className="p-2 rounded-md disabled:opacity-50" style={{backgroundColor: colors.primary, color: 'white'}}><ChevronLeft size={20} /></button>
+            <button onClick={() => navigateWords(1)} disabled={currentIndex === wordList.length - 1 || isLoading} className="p-2 rounded-md disabled:opacity-50" style={{backgroundColor: colors.primary, color: 'white'}}><ChevronRight size={20} /></button>
+        </div>
+    </div>
+);
+
+const PronunciationCard = ({ data }) => {
+  const playAudio = () => { if (data.audioUrl) { new Audio(data.audioUrl).play().catch(console.error); } else { playText(data.word); } };
+  return (
+    <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
+      <div className="flex justify-between items-start mb-4">
+        <div><h2 className="text-3xl font-light">{data.word}</h2><p className="text-lg" style={{ color: colors.primary }}>{data.phonetics}</p></div>
+        <button onClick={playAudio} className="p-3 rounded-full transition-colors" style={{backgroundColor: colors.accent}}><Volume2 size={24} style={{ color: colors.text }} /></button>
+      </div>
+      <div>
+        <h3 className="font-semibold mb-2 flex items-center gap-2"><Mic size={18} style={{color: colors.primary}} />Syllables</h3>
+        <div className="flex flex-wrap gap-2">
+          {data.syllables && data.syllables.map((syllable, index) => (
+            <span key={index} className="px-3 py-1 rounded-md text-lg" style={{backgroundColor: colors.card_alt}}>{syllable}{index < data.syllables.length - 1 && <span className="ml-1 opacity-50">·</span>}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const UsageCard = ({ data }) => (
+  <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
+    <div className="mb-6">
+      <h3 className="font-semibold mb-3 flex items-center gap-2"><BookOpen size={18} style={{color: colors.primary}} />Collocations</h3>
+      <ul className="list-none space-y-2">
+        {data.collocations && data.collocations.map((col, i) => <li key={i} className="p-3 rounded-md" style={{backgroundColor: colors.card_alt}}>{col}</li>)}
+      </ul>
+    </div>
+    <div>
+      <h3 className="font-semibold mb-3 flex items-center gap-2"><FileText size={18} style={{color: colors.primary}} />Example Sentences</h3>
+      <ul className="list-none space-y-3">
+        {data.examples && data.examples.map((ex, i) => (
+            <li key={i} className="flex items-center justify-between gap-2">
+                <p className="italic flex-grow">"{ex}"</p>
+                <button onClick={() => playText(ex)} className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0" title="Listen to sentence"><Volume2 size={18} style={{ color: colors.primary }} /></button>
+            </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+);
+
+const LoadingSpinner = ({ message }) => (<div className="text-center p-10 flex flex-col items-center justify-center"><Loader className="animate-spin mb-4" size={48} style={{ color: colors.primary }} /><p className="text-lg">{message}</p></div>);
+const ErrorMessage = ({ message }) => (<div className="text-center p-10 rounded-lg my-4" style={{backgroundColor: '#FEE2E2'}}><h3 className="text-xl font-semibold" style={{color: colors.danger}}>Oops! Something went wrong.</h3><p className="mt-2" style={{color: colors.danger}}>{message}</p></div>);
+const WordErrorMessage = ({ word, message }) => (<div className="mt-8 p-6 rounded-lg shadow-md text-center animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}><div className="p-4 rounded-lg" style={{backgroundColor: '#FEF2F2'}}><XCircle size={32} className="mx-auto mb-3" style={{color: colors.danger}} /><h3 className="text-xl font-semibold" style={{color: colors.danger}}>Couldn't find "{word}"</h3><p className="text-sm mt-2" style={{color: colors.text}}>{message}</p></div><p className="text-sm mt-4 text-gray-500">Please check the spelling. You can still navigate to other words in your list.</p></div>);
+const WelcomeMessage = () => (<div className="text-center p-10 mt-8 rounded-lg" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}><h2 className="text-2xl font-light mb-2">Welcome to your vocabulary space!</h2><p>Enter a single word (or several separated by commas), or upload a `.txt` or `.csv` file to get started.</p></div>);
+
+const style = document.createElement('style');
+style.innerHTML = `@keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }`;
+document.head.appendChild(style);
