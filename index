@@ -1,0 +1,318 @@
+import React, { useState } from 'react';
+
+// --- Helper Components ---
+
+// Simple Icon component for better UI
+const Icon = ({ path, className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d={path} />
+    </svg>
+);
+
+const CameraIcon = () => <Icon path="M9.4 10.5l-1.84 3.32c-.1.18-.08.4.05.56.13.16.35.22.53.15l3.4-1.34c.18-.07.3-.24.3-.44V8.5l-2.44 2zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2.5-3.5h5c.28 0 .5-.22.5-.5v-5c0-.28-.22-.5-.5-.5h-5c-.28 0-.5.22-.5.5v5c0 .28.22.5.5.5z" />;
+const NutritionIcon = () => <Icon path="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm-1-12v2h2v-2h-2zm0 4v6h2v-6h-2z" />;
+const WeightLossIcon = () => <Icon path="M21.21 15.33l-2.48-2.48c-.4-1.12-1-2.16-1.73-3.11l-2.4-3.2c-.17-.22-.44-.34-.72-.34h-1.76c-.28 0-.54.12-.71.34l-2.4 3.2c-.73.95-1.33 1.99-1.73 3.11l-2.48 2.48c-.53.53-.73 1.25-.56 1.95l.93 3.87c.13.54.6.93 1.15.93h10.02c.55 0 1.02-.39 1.15-.93l.93-3.87c.17-.7-.03-1.42-.56-1.95zM12 13c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" />;
+const MuscleGainIcon = () => <Icon path="M7.5 16.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5S9 14.17 9 15s-.67 1.5-1.5 1.5zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM12 13c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-6.22-3.19C4.85 9.3 4 8.22 4 7c0-1.66 1.34-3 3-3s3 1.34 3 3c0 1.22-.85 2.3-1.78 2.81C9.17 10.95 10.5 12 12 12s2.83-1.05 3.78-2.19C15.15 9.3 16 8.22 16 7c0-1.66 1.34-3 3-3s3 1.34 3 3c0 1.22-.85 2.3-1.78 2.81C19.17 10.95 20.5 12 22 12v2h-2c-2.21 0-4-1.79-4-4h-4c0 2.21-1.79 4-4 4H2v-2c1.5 0 2.83-1.05 3.78-2.19z" />;
+
+// --- Translations ---
+const translations = {
+    en: {
+        title: "Nourish AI",
+        subtitle: "Eat smarter, live better.",
+        uploadTitle: "Upload Your Meal",
+        uploadSubtitle: "Take a picture of your food and let our AI do the rest.",
+        chooseImage: "Choose an Image",
+        goalTitle: "What's Your Goal?",
+        loseWeight: "Lose Weight",
+        gainMuscle: "Gain Muscle",
+        analyzeButton: "Analyze My Food",
+        analyzingButton: "Analyzing...",
+        analysisTitle: "Nutritional Analysis",
+        adviceTitle: "Personalized Advice",
+        errorTitle: "Oops! Something went wrong.",
+        loadingText: "Nourish AI is analyzing your meal...",
+        poweredBy: "Powered by AI",
+        calories: "Calories",
+        protein: "Protein",
+        carbs: "Carbs",
+        fat: "Fat",
+        uploadError: "Please upload an image file (jpg, png, etc.).",
+        imageFirstError: "Please upload an image first."
+    },
+    'zh-TW': {
+        title: "Nourish AI 營養師",
+        subtitle: "聰明飲食，健康生活。",
+        uploadTitle: "上傳您的餐點",
+        uploadSubtitle: "拍下您食物的照片，讓我們的 AI 為您分析。",
+        chooseImage: "選擇圖片",
+        goalTitle: "您的目標是什麼？",
+        loseWeight: "減重",
+        gainMuscle: "增肌",
+        analyzeButton: "分析我的食物",
+        analyzingButton: "分析中...",
+        analysisTitle: "營養分析",
+        adviceTitle: "個人化建議",
+        errorTitle: "哎呀！出現問題了。",
+        loadingText: "Nourish AI 正在分析您的餐點...",
+        poweredBy: "由 AI 驅動",
+        calories: "卡路里",
+        protein: "蛋白質",
+        carbs: "碳水化合物",
+        fat: "脂肪",
+        uploadError: "請上傳圖片檔案（jpg, png, 等）。",
+        imageFirstError: "請先上傳圖片。"
+    }
+};
+
+// --- Main App Component ---
+export default function App() {
+    // --- State Management ---
+    const [language, setLanguage] = useState('en'); // 'en' or 'zh-TW'
+    const [goal, setGoal] = useState('loseWeight'); // 'loseWeight' or 'gainMuscle'
+    const [image, setImage] = useState(null); // Stores the base64 image data
+    const [imagePreview, setImagePreview] = useState(''); // For displaying the selected image
+    const [analysis, setAnalysis] = useState(null); // Stores the API response
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // --- Morandi Color Palette ---
+    const colors = {
+        background: '#f4f1ea', // Light Beige
+        card: '#e4e0d8',       // Muted Beige
+        primary: '#a2a1a6',    // Muted Blue-Gray
+        secondary: '#d3c6b6',  // Dusty Pink-Beige
+        text: '#5f5e5b',       // Dark Gray
+        accent: '#b2a99f',     // Lighter Gray
+        white: '#ffffff',
+    };
+
+    const t = translations[language];
+
+    // --- Handlers ---
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                setError(t.uploadError);
+                return;
+            }
+            setError(null);
+            setAnalysis(null);
+            const previewUrl = URL.createObjectURL(file);
+            setImagePreview(previewUrl);
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = () => {
+                setImage(reader.result.split(',')[1]);
+            };
+        }
+    };
+
+    const handleAnalyze = async () => {
+        if (!image) {
+            setError(t.imageFirstError);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        setAnalysis(null);
+
+        const languageInstruction = language === 'en' ? 'English' : 'Traditional Chinese (繁體中文)';
+        const goalInstruction = goal === 'loseWeight' ? 'lose weight' : 'gain muscle';
+        const prompt = `Analyze the food in this image. Identify each food item, estimate its nutritional content (calories, protein, carbohydrates, fat). Based on a goal to ${goalInstruction}, provide practical and healthy eating advice. The advice should be encouraging and actionable. IMPORTANT: The entire response, including all JSON string values for names and advice, must be in ${languageInstruction}.`;
+
+        const schema = {
+            type: "OBJECT",
+            properties: {
+                foodItems: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            name: { type: "STRING" },
+                            calories: { type: "STRING" },
+                            protein: { type: "STRING" },
+                            carbs: { type: "STRING" },
+                            fat: { type: "STRING" },
+                        },
+                         required: ["name", "calories", "protein", "carbs", "fat"]
+                    }
+                },
+                advice: { type: "STRING" }
+            },
+            required: ["foodItems", "advice"]
+        };
+        
+        const payload = {
+            contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: image } }] }],
+            generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+        };
+
+        try {
+            const apiKey = ""; // Provided by environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                 const errorBody = await response.text();
+                 throw new Error(`API Error: ${response.status} ${response.statusText}. Body: ${errorBody}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                 const text = result.candidates[0].content.parts[0].text;
+                 const parsedJson = JSON.parse(text);
+                 setAnalysis(parsedJson);
+            } else {
+                 console.error("Unexpected API response structure:", result);
+                 throw new Error("Failed to get a valid analysis from the AI. The response format was unexpected.");
+            }
+        } catch (err) {
+            console.error(err);
+            setError(`An error occurred during analysis: ${err.message}. Please try again.`);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const triggerFileUpload = () => {
+        document.getElementById('fileInput').click();
+    };
+
+    // --- Render Methods ---
+    
+    const renderLanguageSelection = () => (
+        <div className="flex justify-center space-x-4 mb-8">
+            <button
+                onClick={() => setLanguage('en')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${language === 'en' ? 'text-white shadow-md scale-105' : ''}`}
+                style={{ backgroundColor: language === 'en' ? colors.secondary : colors.accent, color: language === 'en' ? colors.white : colors.text }}
+            >
+                English
+            </button>
+            <button
+                onClick={() => setLanguage('zh-TW')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${language === 'zh-TW' ? 'text-white shadow-md scale-105' : ''}`}
+                style={{ backgroundColor: language === 'zh-TW' ? colors.secondary : colors.accent, color: language === 'zh-TW' ? colors.white : colors.text }}
+            >
+                繁體中文
+            </button>
+        </div>
+    );
+
+    const renderUploadSection = () => (
+        <div className="w-full max-w-lg mx-auto text-center p-8 rounded-2xl shadow-lg" style={{ backgroundColor: colors.card }}>
+            <h2 className="text-3xl font-bold mb-4" style={{ color: colors.text }}>{t.uploadTitle}</h2>
+            <p className="mb-6" style={{ color: colors.text }}>{t.uploadSubtitle}</p>
+            <input type="file" id="fileInput" className="hidden" onChange={handleImageChange} accept="image/*" />
+            <button onClick={triggerFileUpload} className="w-full flex items-center justify-center px-6 py-4 rounded-xl text-white font-semibold transition-transform transform hover:scale-105" style={{ backgroundColor: colors.primary }}>
+                <CameraIcon />
+                <span className="ml-3">{t.chooseImage}</span>
+            </button>
+            {imagePreview && (
+                <div className="mt-6">
+                    <img src={imagePreview} alt="Food preview" className="rounded-xl mx-auto max-h-60 shadow-md" />
+                </div>
+            )}
+        </div>
+    );
+    
+    const renderGoalSelection = () => (
+        <div className="w-full max-w-lg mx-auto text-center p-8 mt-8 rounded-2xl shadow-lg" style={{ backgroundColor: colors.card }}>
+            <h2 className="text-3xl font-bold mb-6" style={{ color: colors.text }}>{t.goalTitle}</h2>
+            <div className="flex justify-center space-x-4">
+                <button onClick={() => setGoal('loseWeight')} className={`flex items-center px-6 py-3 rounded-xl transition-all duration-300 ${goal === 'loseWeight' ? 'text-white shadow-md scale-105' : 'bg-opacity-50'}`} style={{ backgroundColor: goal === 'loseWeight' ? colors.secondary : colors.accent }}>
+                    <WeightLossIcon />
+                    <span className="ml-2 font-semibold">{t.loseWeight}</span>
+                </button>
+                <button onClick={() => setGoal('gainMuscle')} className={`flex items-center px-6 py-3 rounded-xl transition-all duration-300 ${goal === 'gainMuscle' ? 'text-white shadow-md scale-105' : 'bg-opacity-50'}`} style={{ backgroundColor: goal === 'gainMuscle' ? colors.secondary : colors.accent }}>
+                    <MuscleGainIcon />
+                    <span className="ml-2 font-semibold">{t.gainMuscle}</span>
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderAnalysisButton = () => (
+       <div className="text-center mt-8">
+            <button onClick={handleAnalyze} disabled={loading || !image} className="px-12 py-4 text-xl font-bold text-white rounded-2xl shadow-lg transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: colors.primary }}>
+                {loading ? t.analyzingButton : t.analyzeButton}
+            </button>
+        </div>
+    );
+    
+    const renderResults = () => {
+        if (loading) {
+            return (
+                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center p-8 mt-8">
+                      <div className="animate-spin rounded-full h-16 w-16 border-b-4" style={{borderColor: colors.primary}}></div>
+                      <p className="mt-4 text-lg" style={{color: colors.text}}>{t.loadingText}</p>
+                 </div>
+            );
+        }
+        
+        if (error) {
+            return (
+                <div className="w-full max-w-2xl mx-auto text-center p-6 mt-8 rounded-2xl" style={{ backgroundColor: '#f8d7da', color: '#721c24', border: '1px solid #f5c6cb' }}>
+                    <h3 className="font-bold">{t.errorTitle}</h3>
+                    <p>{error}</p>
+                </div>
+            );
+        }
+        
+        if (!analysis) return null;
+        
+        return (
+            <div className="w-full max-w-4xl mx-auto mt-10 p-8 rounded-2xl shadow-xl" style={{ backgroundColor: colors.white }}>
+                <h2 className="text-4xl font-bold text-center mb-8" style={{ color: colors.text }}>{t.analysisTitle}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    {analysis.foodItems && analysis.foodItems.map((item, index) => (
+                        <div key={index} className="p-6 rounded-2xl shadow-md" style={{backgroundColor: colors.card}}>
+                            <h3 className="text-2xl font-bold mb-3" style={{ color: colors.text }}>{item.name}</h3>
+                            <div className="space-y-2 text-md" style={{color: colors.text}}>
+                                <p><strong>{t.calories}:</strong> {item.calories}</p>
+                                <p><strong>{t.protein}:</strong> {item.protein}</p>
+                                <p><strong>{t.carbs}:</strong> {item.carbs}</p>
+                                <p><strong>{t.fat}:</strong> {item.fat}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div>
+                    <h3 className="text-3xl font-bold mb-4 flex items-center" style={{ color: colors.text }}>
+                        <NutritionIcon />
+                        <span className="ml-3">{t.adviceTitle}</span>
+                    </h3>
+                    <p className="text-lg leading-relaxed p-6 rounded-2xl" style={{ backgroundColor: colors.background, color: colors.text }}>
+                        {analysis.advice}
+                    </p>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <main className="min-h-screen w-full p-4 md:p-8 font-sans" style={{ backgroundColor: colors.background }}>
+             {renderLanguageSelection()}
+            <div className="text-center mb-12">
+                <h1 className="text-5xl md:text-6xl font-extrabold" style={{ color: colors.text }}>{t.title}</h1>
+                <p className="text-xl mt-2" style={{ color: colors.accent }}>{t.subtitle}</p>
+            </div>
+            <div className="space-y-8">
+                {renderUploadSection()}
+                {image && renderGoalSelection()}
+                {image && renderAnalysisButton()}
+                {renderResults()}
+            </div>
+            <footer className="text-center mt-16 pb-8">
+                <p style={{color: colors.accent}}>{t.poweredBy}</p>
+            </footer>
+        </main>
+    );
+}
