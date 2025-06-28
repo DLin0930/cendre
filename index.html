@@ -1,500 +1,429 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader, Upload, BookOpen, Volume2, Mic, FileText, ChevronLeft, ChevronRight, X, ArrowRight, Lightbulb, CheckCircle, XCircle, RefreshCw, Sparkles, Send } from 'lucide-react';
-
-// --- Color Palette (Morandi) ---
-const colors = {
-  bg: '#F4F2F0',
-  card: '#FFFFFF',
-  card_alt: '#EAE7E2',
-  text: '#5B5B5B',
-  primary: '#B2B8B4',
-  accent: '#D4C8BE',
-  shadow: 'rgba(91, 91, 91, 0.1)',
-  success: '#6A994E',
-  danger: '#BC4749',
-};
-
-// --- TTS Utility ---
-let voices = [];
-const populateVoices = () => {
-    voices = window.speechSynthesis.getVoices();
-};
-populateVoices();
-if (window.speechSynthesis.onvoiceschanged !== undefined) {
-    window.speechSynthesis.onvoiceschanged = populateVoices;
-}
-const playText = (text) => {
-    if (!text || typeof window.speechSynthesis === 'undefined') return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const bestVoice = voices.find(voice => voice.name === 'Google US English' && voice.lang.startsWith('en')) ||
-                      voices.find(voice => voice.lang === 'en-US') ||
-                      voices.find(voice => voice.lang.startsWith('en'));
-    if (bestVoice) utterance.voice = bestVoice;
-    utterance.pitch = 1;
-    utterance.rate = 0.9;
-    window.speechSynthesis.speak(utterance);
-};
-
-// --- Main App Component (Router) ---
-export default function App() {
-  const [page, setPage] = useState('vocabulary');
-  const [wordList, setWordList] = useState([]);
-  const [allApiData, setAllApiData] = useState({});
-  const wordsForQuiz = wordList.filter(word => allApiData[word] && !allApiData[word].error).map(w => allApiData[w].word);
-
-  return (
-    <div className="min-h-screen font-sans" style={{ backgroundColor: colors.bg, color: colors.text }}>
-      <div className="container mx-auto p-4 sm:p-6 md:p-8 max-w-5xl">
-        <Header />
-        <Nav page={page} setPage={setPage} activityDisabled={wordsForQuiz.length < 2} />
-        <main>
-          {page === 'vocabulary' && (
-            <VocabularyPage {...{ wordList, setWordList, allApiData, setAllApiData }} />
-          )}
-          {page === 'quiz' && <QuizPage words={wordsForQuiz} />}
-          {page === 'writing' && <CreativeWritingPage words={wordsForQuiz} />}
-        </main>
-      </div>
-    </div>
-  );
-}
-
-// --- Navigation ---
-const Nav = ({ page, setPage, activityDisabled }) => (
-    <div className="flex justify-center my-6">
-        <div className="p-1 rounded-lg flex flex-col sm:flex-row gap-2" style={{backgroundColor: colors.card_alt}}>
-            <button onClick={() => setPage('vocabulary')} className={`px-4 py-2 rounded-md font-semibold transition-all ${page === 'vocabulary' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'vocabulary' ? colors.primary : 'transparent'}}>
-                Vocabulary Revision
-            </button>
-            <button onClick={() => setPage('quiz')} disabled={activityDisabled} className={`px-4 py-2 rounded-md font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${page === 'quiz' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'quiz' ? colors.primary : 'transparent'}}>
-                Cloze Quiz
-            </button>
-             <button onClick={() => setPage('writing')} disabled={activityDisabled} className={`px-4 py-2 rounded-md font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${page === 'writing' ? 'text-white shadow' : 'hover:bg-white/50'}`} style={{backgroundColor: page === 'writing' ? colors.primary : 'transparent'}}>
-                Creative Writing
-            </button>
-        </div>
-        {activityDisabled && (page === 'quiz' || page === 'writing') && <p className="absolute mt-14 sm:mt-20 text-xs text-center w-full max-w-5xl left-1/2 -translate-x-1/2">Define at least 2 words to unlock this activity.</p>}
-    </div>
-);
-
-// --- Helper Function to fetch data ---
-const fetchWordData = async (wordToFetch, setAllApiData) => {
-    if (!wordToFetch || !wordToFetch.trim()) return;
-    let phonetics = 'N/A', audioUrl = null, dictionaryWord = wordToFetch;
-    
-    try {
-        console.log(`Fetching data for: ${wordToFetch}`);
-        try {
-            const dictionaryResponse = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${wordToFetch}`);
-            if (dictionaryResponse.ok) {
-                const dictionaryData = await dictionaryResponse.json();
-                phonetics = dictionaryData[0]?.phonetics.find(p => p.text)?.text || 'N/A';
-                audioUrl = dictionaryData[0]?.phonetics.find(p => p.audio)?.audio;
-                dictionaryWord = dictionaryData[0].word;
-            } else {
-                console.warn(`Dictionary API could not find "${wordToFetch}".`);
-            }
-        } catch (dictionaryError) {
-            console.warn(`Error fetching from Dictionary API for "${wordToFetch}":`, dictionaryError.message);
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>藝術家靈感塔羅牌 - 三牌陣深度解讀</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Serif TC', serif;
         }
-
-        const prompt = `For the English term "${wordToFetch}", generate a JSON object with: "syllables" (array of strings), "collocations" (array of 2 phrases), and "examples" (array of 2 sentences, >8 words each).`;
-        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" }};
-        const apiKey = "";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-        const geminiResponse = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!geminiResponse.ok) throw new Error('Failed to get word details from AI model.');
-        const geminiResult = await geminiResponse.json();
-        const generatedText = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!generatedText) throw new Error('Unexpected response structure from AI model.');
-        
-        const geminiData = JSON.parse(generatedText);
-        setAllApiData(prev => ({...prev, [wordToFetch]: {
-            word: dictionaryWord, phonetics, audioUrl,
-            syllables: geminiData.syllables || [], collocations: geminiData.collocations || [], examples: geminiData.examples || [],
-        }}));
-    } catch (err) {
-        console.error(`Critical error fetching ${wordToFetch}:`, err.message);
-        setAllApiData(prev => ({...prev, [wordToFetch]: { word: wordToFetch, error: err.message }}));
-    }
-};
-
-// --- Page 1: Vocabulary Revision ---
-const VocabularyPage = ({ wordList, setWordList, allApiData, setAllApiData }) => {
-  const [word, setWord] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [inputError, setInputError] = useState('');
-
-  const activeWord = wordList.length > 0 ? wordList[currentIndex] : null;
-  const currentApiData = activeWord ? allApiData[activeWord] : null;
-
-  const processNewWordList = useCallback(async (words) => {
-    setWordList(words);
-    setCurrentIndex(0);
-    const newWordsToFetch = words.filter(w => !allApiData[w]);
-    if (newWordsToFetch.length === 0) return;
-    setIsLoading(true);
-    for (const wordToFetch of newWordsToFetch) {
-        await fetchWordData(wordToFetch, setAllApiData);
-    }
-    setIsLoading(false);
-  }, [allApiData, setAllApiData, setWordList]);
-
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    const wordsFromInput = word.split(',').map(w => w.trim()).filter(Boolean);
-    if (wordsFromInput.length === 0) {
-        setInputError("Please enter at least one word.");
-        return;
-    }
-    setInputError('');
-    processNewWordList(wordsFromInput);
-  };
-
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file && (file.type === "text/plain" || file.type === "text/csv")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const words = e.target.result.split('\n').map(line => line.split(',')[0].trim()).filter(Boolean);
-        if (words.length > 0) {
-            setWord(''); setInputError(''); processNewWordList(words);
-        } else {
-            setInputError("The uploaded file is empty or contains no valid words.");
+        .card-container {
+            perspective: 1000px;
         }
-      };
-      reader.readAsText(file);
-    } else {
-        setInputError("Please upload a valid .txt or .csv file.");
-    }
-    event.target.value = null; 
-  };
-  
-  const clearWordList = () => { setWordList([]); setCurrentIndex(0); setWord(''); }
-  const navigateWords = (direction) => setCurrentIndex(prev => Math.max(0, Math.min(wordList.length - 1, prev + direction)));
-
-  return (
-    <>
-      <WordInput {...{word, setWord, onSubmit: handleFormSubmit, onFileUpload: handleFileUpload, isLoading, inputError, setInputError}} />
-      {isLoading && <LoadingSpinner message="Defining all words in your list..." />}
-      {!isLoading && wordList.length > 0 && (
-        <ListNavigator {...{clearWordList, navigateWords, currentIndex, wordList, isLoading}} />
-      )}
-      {!isLoading && currentApiData && (
-        currentApiData.error ? 
-        <WordErrorMessage word={currentApiData.word} message={currentApiData.error} /> :
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-          <PronunciationCard data={currentApiData} />
-          <UsageCard data={currentApiData} />
-        </div>
-      )}
-      {!isLoading && wordList.length === 0 && <WelcomeMessage />}
-    </>
-  );
-};
-
-// --- Page 2: Cloze Quiz ---
-const QuizPage = ({ words }) => {
-    const [quizData, setQuizData] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [quizMode, setQuizMode] = useState('match');
-    const [userAnswers, setUserAnswers] = useState([]);
-    const [results, setResults] = useState(null);
-    const [selectedWord, setSelectedWord] = useState(null);
-
-    const generateQuiz = useCallback(async () => {
-        setIsLoading(true); setError(null); setQuizData(null); setResults(null);
-        const prompt = `You are an English teacher creating a cloze quiz. Given a list of vocabulary words: ${words.join(', ')}.
-        1. Create a cohesive passage of about 150 words that uses these vocabulary words. The words might need to be in different forms (e.g., 'react' might become 'reaction' or 'reactive').
-        2. Structure your response as a JSON object with two keys: "passage_template" and "blanks".
-        3. For "passage_template", provide the passage but replace each used vocabulary word with a placeholder like {blank_0}, {blank_1}, etc.
-        4. For "blanks", provide an array of objects. Each object corresponds to a placeholder in the passage and must have two keys: "correct_form" (the exact word used) and "hint" (the original base word).`;
-        
-        try {
-            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" }};
-            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-
-            if (!response.ok) { let errorText = `Failed to generate quiz from AI (Status: ${response.status}).`; try { const errorData = await response.json(); const apiMessage = errorData?.error?.message; if (apiMessage) { errorText = `AI Error: ${apiMessage}`; if (apiMessage.includes('SAFETY')) { errorText = "The quiz could not be generated due to the vocabulary content. Please try a different list of words."}}} catch (e) { errorText += " Could not read error details."} throw new Error(errorText); }
-
-            const result = await response.json();
-            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) throw new Error("Could not extract passage from AI response.");
-
-            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
-            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
-            
-            try {
-                const parsedQuiz = JSON.parse(text);
-                const { passage_template, blanks } = parsedQuiz;
-                if (!passage_template || !blanks || !Array.isArray(blanks)) { throw new Error("AI response did not match the required format."); }
-                const templateParts = passage_template.split(/{blank_\d+}/);
-                const shuffledBank = [...new Set(blanks.map(b => b.correct_form))].sort(() => Math.random() - 0.5);
-                const hintBank = [...new Set(blanks.map(b => b.hint))].sort(() => Math.random() - 0.5);
-                setQuizData({ passage: passage_template.replace(/{blank_(\d+)}/g, (match, index) => blanks[parseInt(index)].correct_form), templateParts, blanks, shuffledBank, hintBank });
-                setUserAnswers(new Array(blanks.length).fill(''));
-            } catch (parsingError) { console.error("Failed to parse JSON from AI response:", parsingError); console.error("Raw text received:", text); throw new Error("The AI returned an invalid format. Please try generating the quiz again."); }
-        } catch (err) { console.error(err); setError(err.message || "An unexpected error occurred."); } finally { setIsLoading(false); }
-    }, [words]);
-    
-    const handleAnswerChange = (index, value) => { const newAnswers = [...userAnswers]; newAnswers[index] = value; setUserAnswers(newAnswers); };
-    const handleMatch = (blankIndex) => { if (selectedWord) { handleAnswerChange(blankIndex, selectedWord); setSelectedWord(null); }};
-    const checkAnswers = () => { const newResults = quizData.blanks.map((blank, index) => (userAnswers[index] || "").toLowerCase().trim() === blank.correct_form.toLowerCase()); setResults(newResults); };
-    const resetQuiz = () => { setUserAnswers(new Array(quizData.blanks.length).fill('')); setResults(null); setSelectedWord(null); };
-
-    if (isLoading) return <LoadingSpinner message="Generating your interactive quiz..." />;
-    if (error) return <ErrorMessage message={error} />;
-    return ( <div className="p-6 rounded-lg shadow-md mt-4 animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>{!quizData ? ( <div className="text-center"><Lightbulb size={40} className="mx-auto mb-4" style={{color: colors.primary}} /><h2 className="text-2xl font-light mb-2">Ready to Test Your Knowledge?</h2><p className="mb-6">Click the button below to generate a cloze quiz using your selected words: <br/> <span className="font-semibold">{words.join(', ')}</span></p><button onClick={generateQuiz} className="px-6 py-3 rounded-md text-white font-semibold transition-colors" style={{ backgroundColor: colors.primary }}>Generate Quiz</button></div>) : (<div><div className="flex flex-wrap justify-between items-center gap-4 mb-6"><h2 className="text-2xl font-light">Complete the Passage</h2><div className="flex gap-2 items-center">{results && <button onClick={() => playText(quizData.passage)} className="p-2 rounded-full transition-colors" style={{backgroundColor: colors.accent}} title="Listen to Passage"><Volume2 size={20} style={{ color: colors.text }} /></button>}<button onClick={resetQuiz} className="p-2 rounded-full transition-colors" style={{backgroundColor: colors.accent}} title="Reset Quiz"><RefreshCw size={20} style={{ color: colors.text }} /></button><div className="p-1 rounded-lg flex text-sm" style={{backgroundColor: colors.card_alt}}><button onClick={() => setQuizMode('match')} className={`px-2 py-1 rounded-md ${quizMode === 'match' ? 'text-white shadow' : ''}`} style={{backgroundColor: quizMode === 'match' ? colors.primary : 'transparent'}}>Match</button><button onClick={() => setQuizMode('type')} className={`px-2 py-1 rounded-md ${quizMode === 'type' ? 'text-white shadow' : ''}`} style={{backgroundColor: quizMode === 'type' ? colors.primary : 'transparent'}}>Type</button></div></div></div>{(quizMode === 'match' || quizMode === 'type') && (<div className="mb-6 p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}><p className="font-semibold mb-2 text-center">{quizMode === 'match' ? 'Word Bank (Correct Forms)' : 'Hint Bank (Base Words)'}</p><div className="flex flex-wrap justify-center gap-2">{(quizMode === 'match' ? quizData.shuffledBank : quizData.hintBank).map((word, index) => (<button key={index} onClick={() => quizMode === 'match' && setSelectedWord(word)} className={`px-3 py-1 rounded-md transition-all border-2 ${selectedWord === word && quizMode === 'match' ? 'border-blue-500' : 'border-transparent'} ${quizMode === 'type' ? 'cursor-default' : ''}`} style={{backgroundColor: colors.accent}}>{word}</button>))}</div></div>)}<p className="text-lg leading-loose">{quizData.templateParts.map((part, i) => (<React.Fragment key={i}>{part}{i < quizData.blanks.length && (() => { const resultIcon = results ? (results[i] ? <CheckCircle size={16} className="text-green-600 inline-block ml-1"/> : <XCircle size={16} className="text-red-600 inline-block ml-1"/>) : null; if (quizMode === 'type') { return (<span className="inline-block mx-1 relative"><input type="text" value={userAnswers[i] || ''} onChange={(e) => handleAnswerChange(i, e.target.value)} disabled={!!results} className="w-36 p-1 rounded-md text-center border-b-2 focus:outline-none" style={{borderColor: colors.primary, backgroundColor: colors.bg}}/>{resultIcon && <span className="absolute -top-2 -right-2">{resultIcon}</span>}</span>); } else { return (<span className="inline-block mx-1 relative"><button onClick={() => handleMatch(i)} disabled={!!results} className="w-36 p-1 rounded-md text-center border-b-2" style={{borderColor: colors.primary, backgroundColor: userAnswers[i] ? colors.accent : colors.bg}}>{userAnswers[i] || '[ . . . ]'}</button>{resultIcon && <span className="absolute -top-2 -right-2">{resultIcon}</span>}</span>) }})()}</React.Fragment>))}</p><div className="mt-8 text-center">{!results ? <button onClick={checkAnswers} className="px-6 py-3 rounded-md text-white font-semibold transition-colors" style={{ backgroundColor: colors.success }}>Check Answers</button> : <div className="p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}><h3 className="text-xl font-semibold">Quiz Complete!</h3><p>You got {results.filter(Boolean).length} out of {results.length} correct.</p><details className="mt-4 text-left"><summary className="cursor-pointer font-semibold" style={{color: colors.primary}}>Show Answers</summary><ul className="mt-2 list-decimal list-inside space-y-1 text-sm">{quizData.blanks.map((blank, index) => (<li key={index}><span className="font-semibold">{blank.correct_form}</span> (Base word: {blank.hint})</li>))}</ul></details></div>}</div></div>)}</div>);
-};
-
-// --- Page 3: Creative Writing Challenge ---
-const CreativeWritingPage = ({ words }) => {
-    const [prompt, setPrompt] = useState(null);
-    const [userText, setUserText] = useState('');
-    const [feedback, setFeedback] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const generatePrompt = useCallback(async () => {
-        setIsLoading(true); setError(''); setFeedback(null); setUserText('');
-        const request = `As an English teacher, create a "story starter" kit to help a student write a short paragraph.
-        The student's vocabulary list is: ${words.join(', ')}.
-
-        Your response must be a JSON object containing three keys: "scenario", "guiding_questions", and "words_to_include".
-        - "scenario": A brief, one-sentence situation (15-25 words).
-        - "guiding_questions": An array of 2-3 open-ended questions to inspire the student.
-        - "words_to_include": An array of 3-4 specific words from the provided vocabulary list that fit the scenario well.
-        
-        Example JSON output:
-        {
-          "scenario": "A detective discovers a mysterious, glowing object during an investigation in an old library.",
-          "guiding_questions": ["What is the object's origin?", "How does the detective react?", "What is the first step in the new investigation?"],
-          "words_to_include": ["reaction", "environment", "discover"]
-        }`;
-
-        try {
-            const payload = { contents: [{ role: "user", parts: [{ text: request }] }], generationConfig: { responseMimeType: "application/json" }};
-            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!response.ok) throw new Error("Failed to generate a prompt.");
-            const result = await response.json();
-            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) throw new Error("Could not extract prompt from AI response.");
-
-            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
-            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
-            
-            const parsedPrompt = JSON.parse(text);
-            setPrompt(parsedPrompt);
-        } catch (err) {
-            setError(err.message || "An unexpected error occurred.");
-        } finally {
-            setIsLoading(false);
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.8s;
+            transform-style: preserve-3d;
         }
-    }, [words]);
-
-    const getFeedback = useCallback(async () => {
-        if (!userText.trim()) { setError("Please write something before getting feedback."); return; }
-        setIsFeedbackLoading(true); setError(''); setFeedback(null);
-        const request = `As an English teacher, review the following text. The student was given this prompt:
-        - Scenario: "${prompt.scenario}"
-        - They were asked to include these words: ${prompt.words_to_include.join(', ')}
-        
-        Student's text: "${userText}"
-        
-        Provide feedback as a JSON object with three keys: "word_usage", "grammar_and_fluency", and "suggestions".
-        - "word_usage": Comment on how well they used the suggested vocabulary. Note any misuses.
-        - "grammar_and_fluency": Give general feedback on grammar, spelling, and flow.
-        - "suggestions": Offer 1-2 concrete suggestions for improvement.`;
-
-        try {
-            const payload = { contents: [{ role: "user", parts: [{ text: request }] }], generationConfig: { responseMimeType: "application/json" }};
-            const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!response.ok) throw new Error("Failed to get feedback from the AI.");
-            const result = await response.json();
-            let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) throw new Error("Could not extract feedback from AI response.");
-
-            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```|({[\s\S]*})/);
-            if (jsonMatch && (jsonMatch[1] || jsonMatch[2])) { text = jsonMatch[1] || jsonMatch[2]; }
-            
-            const parsedFeedback = JSON.parse(text);
-            setFeedback(parsedFeedback);
-        } catch (err) {
-            setError(err.message || "An unexpected error occurred while getting feedback.");
-        } finally {
-            setIsFeedbackLoading(false);
+        .card-container.flipped .card-inner {
+            transform: rotateY(180deg);
         }
-    }, [userText, prompt, words]);
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 1rem;
+        }
+        .card-back {
+            transform: rotateY(180deg);
+        }
+        .topic-btn.selected {
+            background-color: #6D28D9;
+            color: white;
+            box-shadow: 0 0 15px rgba(109, 40, 217, 0.5);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #6D28D9;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-200 via-purple-300 to-blue-200 min-h-screen flex items-center justify-center p-4">
 
+    <main class="w-full max-w-6xl mx-auto bg-white/50 backdrop-blur-xl rounded-2xl shadow-2xl p-6 md:p-8 text-center text-slate-800">
+        
+        <header id="main-header" class="mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-purple-900">藝術家靈感塔羅</h1>
+            <p class="text-slate-600 mt-2">過去・現在・未來：三牌陣深度解讀</p>
+        </header>
 
-    return (
-        <div className="p-6 rounded-lg shadow-md mt-4 animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
-            <h2 className="text-2xl font-light mb-4">Creative Writing Challenge</h2>
-            <div className="flex flex-col sm:flex-row gap-4 items-center mb-6 p-4 rounded-lg" style={{backgroundColor: colors.card_alt}}>
-                <div className="flex-grow">
-                    <p className="font-semibold">Your Story Starter:</p>
-                    {isLoading ? <p className="italic">Generating a prompt...</p> : 
-                        !prompt ? <p className="italic">Click the button to get a writing prompt!</p> : (
-                            <div className="space-y-3 mt-2">
-                                <div>
-                                    <h4 className="font-semibold">Scenario:</h4>
-                                    <p className="italic">"{prompt.scenario}"</p>
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold">Guiding Questions:</h4>
-                                    <ul className="list-disc list-inside text-sm">
-                                        {prompt.guiding_questions.map((q, i) => <li key={i}>{q}</li>)}
-                                    </ul>
-                                </div>
-                                 <div>
-                                    <h4 className="font-semibold">Words to Include:</h4>
-                                    <div className="flex flex-wrap gap-2 mt-1">
-                                        {prompt.words_to_include.map((w,i) => <span key={i} className="px-2 py-1 text-sm rounded-md" style={{backgroundColor: colors.accent}}>{w}</span>)}
-                                    </div>
-                                </div>
-                            </div>
-                        )
-                    }
-                </div>
-                <button onClick={generatePrompt} disabled={isLoading} className="px-4 py-2 rounded-md text-white font-semibold transition-colors flex items-center gap-2 self-start sm:self-center" style={{backgroundColor: colors.primary}}><Sparkles size={18} /> Get New Prompt</button>
-            </div>
-            
-            <textarea
-                value={userText}
-                onChange={(e) => setUserText(e.target.value)}
-                placeholder="Write your story or paragraph here..."
-                rows="8"
-                className="w-full p-3 rounded-md border-2 focus:outline-none transition-colors"
-                style={{borderColor: colors.card_alt, backgroundColor: colors.bg, '--tw-ring-color': colors.primary}}
-            />
-             <div className="text-center mt-4">
-                <button onClick={getFeedback} disabled={!userText || isFeedbackLoading} className="px-6 py-3 rounded-md text-white font-semibold transition-colors flex items-center gap-2 mx-auto disabled:opacity-50" style={{backgroundColor: colors.success}}>
-                    {isFeedbackLoading ? <><Loader className="animate-spin" size={20}/> Analyzing...</> : <><Send size={18}/>Check My Writing</>}
-                </button>
-            </div>
-
-            {error && <ErrorMessage message={error}/>}
-
-            {feedback && (
-                <div className="mt-8 space-y-4">
-                    <h3 className="text-xl font-semibold border-b pb-2" style={{borderColor: colors.card_alt}}>Feedback</h3>
-                    <div>
-                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Word Usage</h4>
-                        <p>{feedback.word_usage}</p>
-                    </div>
-                    <div>
-                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Grammar & Fluency</h4>
-                        <p>{feedback.grammar_and_fluency}</p>
-                    </div>
-                     <div>
-                        <h4 className="font-semibold text-lg" style={{color: colors.primary}}>Suggestions</h4>
-                        <p>{feedback.suggestions}</p>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-
-// --- Common & Re-usable Components ---
-const Header = () => (
-  <header className="text-center mb-2">
-    <h1 className="text-4xl sm:text-5xl font-light tracking-wider mb-2" style={{color: colors.text}}>Lingo <span style={{color: colors.primary}}>Deck</span></h1>
-    <p className="text-md" style={{color: colors.text}}>Your calm space for vocabulary revision.</p>
-    <p className="text-xs mt-2" style={{color: colors.text, opacity: 0.6}}>Made by Daphne Lin</p>
-  </header>
-);
-
-const WordInput = ({ word, setWord, onSubmit, onFileUpload, isLoading, inputError, setInputError }) => (
-    <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
-      <form onSubmit={onSubmit} className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-        <div className="relative w-full">
-            <BookOpen size={20} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: colors.primary }} />
-            <input type="text" value={word} onChange={(e) => { setWord(e.target.value); if(inputError) setInputError(''); }} placeholder="Enter a word, or several separated by commas..." className="w-full pl-10 pr-4 py-3 rounded-md border-2 transition-all duration-300 focus:outline-none" style={{ borderColor: inputError ? colors.danger : colors.card_alt, backgroundColor: colors.bg, '--tw-ring-color': colors.primary }} />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-            <button type="submit" disabled={isLoading} className="w-1/2 sm:w-auto flex-grow px-6 py-3 rounded-md text-white font-semibold transition-colors disabled:opacity-70" style={{ backgroundColor: colors.primary }}>{isLoading ? '...' : 'Define'}</button>
-            <label htmlFor="file-upload" className="w-1/2 sm:w-auto flex-grow cursor-pointer px-4 py-3 rounded-md font-semibold transition-colors flex items-center justify-center gap-2" style={{ backgroundColor: colors.accent, color: colors.text }}>
-              <Upload size={18} /><span>List</span>
-              <input id="file-upload" type="file" className="sr-only" onChange={onFileUpload} accept=".txt,.csv"/>
-            </label>
-        </div>
-      </form>
-      {inputError && <p className="text-red-600 text-sm mt-2">{inputError}</p>}
-    </div>
-);
-
-const ListNavigator = ({ clearWordList, navigateWords, currentIndex, wordList, isLoading }) => (
-    <div className="my-6 p-3 rounded-lg flex items-center justify-between" style={{backgroundColor: colors.card_alt}}>
-        <div className="flex items-center gap-4">
-            <button onClick={clearWordList} className="p-2 rounded-full hover:bg-red-200 transition-colors" title="Clear word list"><X size={20} className="text-red-500" /></button>
+        <!-- 輸入區段 -->
+        <section id="input-section" class="space-y-8">
             <div>
-                <p className="font-semibold text-sm">Reviewing from List</p>
-                <p className="text-xs">{`Word ${currentIndex + 1} of ${wordList.length}`}</p>
+                <label class="block text-lg font-semibold text-purple-800 mb-4">1. 請選擇您想詢問的主題</label>
+                <div id="topic-selector" class="flex flex-wrap justify-center gap-3">
+                    <button data-topic="工作運勢" class="topic-btn px-4 py-2 bg-white/70 rounded-full shadow-md hover:bg-purple-200 transition-all duration-300 font-semibold">工作運勢</button>
+                    <button data-topic="愛情運勢" class="topic-btn px-4 py-2 bg-white/70 rounded-full shadow-md hover:bg-purple-200 transition-all duration-300 font-semibold">愛情運勢</button>
+                    <button data-topic="學業運勢" class="topic-btn px-4 py-2 bg-white/70 rounded-full shadow-md hover:bg-purple-200 transition-all duration-300 font-semibold">學業運勢</button>
+                    <button data-topic="人際關係" class="topic-btn px-4 py-2 bg-white/70 rounded-full shadow-md hover:bg-purple-200 transition-all duration-300 font-semibold">人際關係</button>
+                    <button data-topic="健康運勢" class="topic-btn px-4 py-2 bg-white/70 rounded-full shadow-md hover:bg-purple-200 transition-all duration-300 font-semibold">健康運勢</button>
+                </div>
             </div>
-        </div>
-        <div className="flex items-center gap-2">
-            <button onClick={() => navigateWords(-1)} disabled={currentIndex === 0 || isLoading} className="p-2 rounded-md disabled:opacity-50" style={{backgroundColor: colors.primary, color: 'white'}}><ChevronLeft size={20} /></button>
-            <button onClick={() => navigateWords(1)} disabled={currentIndex === wordList.length - 1 || isLoading} className="p-2 rounded-md disabled:opacity-50" style={{backgroundColor: colors.primary, color: 'white'}}><ChevronRight size={20} /></button>
-        </div>
-    </div>
-);
 
-const PronunciationCard = ({ data }) => {
-  const playAudio = () => { if (data.audioUrl) { new Audio(data.audioUrl).play().catch(console.error); } else { playText(data.word); } };
-  return (
-    <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
-      <div className="flex justify-between items-start mb-4">
-        <div><h2 className="text-3xl font-light">{data.word}</h2><p className="text-lg" style={{ color: colors.primary }}>{data.phonetics}</p></div>
-        <button onClick={playAudio} className="p-3 rounded-full transition-colors" style={{backgroundColor: colors.accent}}><Volume2 size={24} style={{ color: colors.text }} /></button>
-      </div>
-      <div>
-        <h3 className="font-semibold mb-2 flex items-center gap-2"><Mic size={18} style={{color: colors.primary}} />Syllables</h3>
-        <div className="flex flex-wrap gap-2">
-          {data.syllables && data.syllables.map((syllable, index) => (
-            <span key={index} className="px-3 py-1 rounded-md text-lg" style={{backgroundColor: colors.card_alt}}>{syllable}{index < data.syllables.length - 1 && <span className="ml-1 opacity-50">·</span>}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
+            <div>
+                 <button id="draw-button" class="px-8 py-3 bg-purple-600 text-white font-bold rounded-lg shadow-lg hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 text-xl">
+                    ✨ 揭示牌陣 ✨
+                </button>
+                <p id="error-message" class="text-red-500 mt-2 h-5"></p>
+            </div>
+        </section>
 
-const UsageCard = ({ data }) => (
-  <div className="p-6 rounded-lg shadow-md" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}>
-    <div className="mb-6">
-      <h3 className="font-semibold mb-3 flex items-center gap-2"><BookOpen size={18} style={{color: colors.primary}} />Collocations</h3>
-      <ul className="list-none space-y-2">
-        {data.collocations && data.collocations.map((col, i) => <li key={i} className="p-3 rounded-md" style={{backgroundColor: colors.card_alt}}>{col}</li>)}
-      </ul>
-    </div>
-    <div>
-      <h3 className="font-semibold mb-3 flex items-center gap-2"><FileText size={18} style={{color: colors.primary}} />Example Sentences</h3>
-      <ul className="list-none space-y-3">
-        {data.examples && data.examples.map((ex, i) => (
-            <li key={i} className="flex items-center justify-between gap-2">
-                <p className="italic flex-grow">"{ex}"</p>
-                <button onClick={() => playText(ex)} className="p-2 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0" title="Listen to sentence"><Volume2 size={18} style={{ color: colors.primary }} /></button>
-            </li>
-        ))}
-      </ul>
-    </div>
-  </div>
-);
+        <!-- 結果顯示區段 -->
+        <section id="result-section" class="hidden mt-8 animate-fade-in">
+            <!-- 三張卡牌 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                <!-- 過去 -->
+                <div class="card-display text-center">
+                    <h3 class="text-xl font-bold text-purple-800 mb-2">過去</h3>
+                    <div class="w-60 h-96 card-container mx-auto">
+                        <div class="card-inner">
+                            <div class="card-front bg-gray-200"><img src="https://placehold.co/300x480/663399/FFFFFF?text=藝術家靈感塔羅&font=noto-serif-tc" class="w-full h-full object-cover rounded-2xl"></div>
+                            <div class="card-back bg-white flex items-center justify-center p-2"><div class="loading-indicator text-center"><div class="spinner mx-auto"></div><p class="mt-2 text-sm text-purple-700">繪製中...</p></div><img class="card-image w-full h-full object-cover hidden"></div>
+                        </div>
+                    </div>
+                    <h4 class="card-name text-lg font-semibold mt-3"></h4>
+                    <p class="card-artist text-sm text-slate-500"></p>
+                    <p class="card-meaning text-sm text-slate-700 mt-2"></p>
+                </div>
+                <!-- 現在 -->
+                <div class="card-display text-center">
+                    <h3 class="text-xl font-bold text-purple-800 mb-2">現在</h3>
+                    <div class="w-60 h-96 card-container mx-auto">
+                        <div class="card-inner">
+                            <div class="card-front bg-gray-200"><img src="https://placehold.co/300x480/663399/FFFFFF?text=藝術家靈感塔羅&font=noto-serif-tc" class="w-full h-full object-cover rounded-2xl"></div>
+                            <div class="card-back bg-white flex items-center justify-center p-2"><div class="loading-indicator text-center"><div class="spinner mx-auto"></div><p class="mt-2 text-sm text-purple-700">繪製中...</p></div><img class="card-image w-full h-full object-cover hidden"></div>
+                        </div>
+                    </div>
+                    <h4 class="card-name text-lg font-semibold mt-3"></h4>
+                    <p class="card-artist text-sm text-slate-500"></p>
+                    <p class="card-meaning text-sm text-slate-700 mt-2"></p>
+                </div>
+                <!-- 未來 -->
+                <div class="card-display text-center">
+                    <h3 class="text-xl font-bold text-purple-800 mb-2">未來</h3>
+                    <div class="w-60 h-96 card-container mx-auto">
+                        <div class="card-inner">
+                            <div class="card-front bg-gray-200"><img src="https://placehold.co/300x480/663399/FFFFFF?text=藝術家靈感塔羅&font=noto-serif-tc" class="w-full h-full object-cover rounded-2xl"></div>
+                            <div class="card-back bg-white flex items-center justify-center p-2"><div class="loading-indicator text-center"><div class="spinner mx-auto"></div><p class="mt-2 text-sm text-purple-700">繪製中...</p></div><img class="card-image w-full h-full object-cover hidden"></div>
+                        </div>
+                    </div>
+                    <h4 class="card-name text-lg font-semibold mt-3"></h4>
+                    <p class="card-artist text-sm text-slate-500"></p>
+                    <p class="card-meaning text-sm text-slate-700 mt-2"></p>
+                </div>
+            </div>
 
-const LoadingSpinner = ({ message }) => (<div className="text-center p-10 flex flex-col items-center justify-center"><Loader className="animate-spin mb-4" size={48} style={{ color: colors.primary }} /><p className="text-lg">{message}</p></div>);
-const ErrorMessage = ({ message }) => (<div className="text-center p-10 rounded-lg my-4" style={{backgroundColor: '#FEE2E2'}}><h3 className="text-xl font-semibold" style={{color: colors.danger}}>Oops! Something went wrong.</h3><p className="mt-2" style={{color: colors.danger}}>{message}</p></div>);
-const WordErrorMessage = ({ word, message }) => (<div className="mt-8 p-6 rounded-lg shadow-md text-center animate-fade-in" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}><div className="p-4 rounded-lg" style={{backgroundColor: '#FEF2F2'}}><XCircle size={32} className="mx-auto mb-3" style={{color: colors.danger}} /><h3 className="text-xl font-semibold" style={{color: colors.danger}}>Couldn't find "{word}"</h3><p className="text-sm mt-2" style={{color: colors.text}}>{message}</p></div><p className="text-sm mt-4 text-gray-500">Please check the spelling. You can still navigate to other words in your list.</p></div>);
-const WelcomeMessage = () => (<div className="text-center p-10 mt-8 rounded-lg" style={{backgroundColor: colors.card, boxShadow: `0 4px 15px ${colors.shadow}`}}><h2 className="text-2xl font-light mb-2">Welcome to your vocabulary space!</h2><p>Enter a single word (or several separated by commas), or upload a `.txt` or `.csv` file to get started.</p></div>);
+            <!-- 綜合解讀 -->
+            <div class="bg-white/40 p-6 rounded-lg text-left max-w-4xl mx-auto">
+                <h3 class="text-2xl font-bold text-purple-900 mb-4">綜合解讀</h3>
+                <div id="interpretation-loading" class="flex items-center gap-3">
+                    <div class="spinner"></div>
+                    <p class="text-slate-600">AI正在為您綜合分析牌義，請稍候...</p>
+                </div>
+                <div id="interpretation-content" class="text-slate-700 leading-relaxed hidden"></div>
+            </div>
 
-const style = document.createElement('style');
-style.innerHTML = `@keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }`;
-document.head.appendChild(style);
+            <p class="text-xs text-slate-500 mt-6">提醒：本占卜結果僅供參考，請以智慧和直覺面對您的生活。</p>
+
+            <button id="redraw-button" class="mt-8 px-6 py-2 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition-all">重新占卜</button>
+        </section>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tarotData = [
+                // Major Arcana
+                { name: '愚者 (The Fool)', artist: '文森・梵谷 (Vincent van Gogh)', image_prompt: 'The Fool tarot card, painted in the dramatic, impasto, and emotional style of Vincent Van Gogh. A figure with a bundle on a stick stepping joyfully towards a cliff edge under a swirling, starry sky.', meaning: '新開始、冒險、天真、潛力' },
+                { name: '魔術師 (The Magician)', artist: '李奧納多・達文西 (Leonardo da Vinci)', image_prompt: 'The Magician tarot card, rendered in the style of a Leonardo da Vinci painting, featuring sfumato and chiaroscuro techniques. A figure of profound wisdom, with one hand pointing to the sky and one to the earth. Before him, a table with the four elemental symbols, meticulously detailed like an anatomical study.', meaning: '創造力、溝通、社交性、所有必要的資源' },
+                { name: '女祭司 (The High Priestess)', artist: '約翰尼斯・維梅爾 (Johannes Vermeer)', image_prompt: 'The High Priestess tarot card, rendered with the calm, luminous, and detailed style of Johannes Vermeer. A serene woman veiled and seated between two pillars, holding a scroll, illuminated by a soft, internal light, reflecting quiet wisdom and mystery.', meaning: '直覺、智慧、神秘、距離' },
+                { name: '皇后 (The Empress)', artist: '桑德羅・波提切利 (Sandro Botticelli)', image_prompt: 'The Empress tarot card, painted in the graceful, allegorical, and colorful style of Sandro Botticelli. A lush garden setting with a powerful, fertile female figure, adorned with symbols of nature and abundance, reflecting beauty and creation.', meaning: '豐盛、喜悅、母愛、美麗' },
+                { name: '皇帝 (The Emperor)', artist: '倫勃朗 (Rembrandt van Rijn)', image_prompt: 'The Emperor tarot card, depicted in the deep, chiaroscuro style of Rembrandt. An authoritative male figure seated on a throne, with a strong, contemplative gaze, suggesting wisdom and a powerful presence through shadow and light.', meaning: '權力、秩序、控制、獨裁' },
+                { name: '教宗 (The Hierophant)', artist: '揚・凡・艾克 (Jan van Eyck)', image_prompt: 'The Hierophant tarot card, in the meticulously detailed and realistic style of Jan van Eyck. A wise religious figure on a throne, blessing two supplicants, with rich textures in robes and intricate architectural details, demonstrating spiritual authority.', meaning: '傳統、教育、道德、心靈導師' },
+                { name: '戀人 (The Lovers)', artist: '拉斐爾・聖齊奧 (Raphael Sanzio)', image_prompt: 'The Lovers tarot card, in the serene, harmonious, and graceful style of Raphael. Idealized figures of a man and a woman stand in a lush, peaceful garden, blessed by a gentle angel above. The composition is balanced and the colors are soft and clear.', meaning: '選擇、溝通、愛情、團隊合作' },
+                { name: '戰車 (The Chariot)', artist: '雅克-路易·大衛 (Jacques-Louis David)', image_prompt: 'The Chariot tarot card, in the neoclassical, heroic, and dramatic style of Jacques-Louis David. A triumphant figure in a chariot, pulled by two sphinxes, embodying focused will and victory, with a sense of classical grandeur and determination.', meaning: '意志力、自律、勝利、競爭' },
+                { name: '力量 (Strength)', artist: '彼得・保羅・魯本斯 (Peter Paul Rubens)', image_prompt: 'Strength tarot card, in the dynamic, vibrant, and fleshy style of Peter Paul Rubens. A powerful, yet gentle woman calmly closes the mouth of a majestic lion. The scene is filled with energy, warm light, and rich textures.', meaning: '力量、勇氣、自信、耐心' },
+                { name: '隱者 (The Hermit)', artist: '愛德華・蒙克 (Edvard Munch)', image_prompt: 'The Hermit tarot card, in the expressive, melancholic, and symbolically rich style of Edvard Munch. A solitary figure with a lantern, standing on a desolate landscape, conveying introspection, isolation, and a search for inner light.', meaning: '獨處、謹慎、內省、智慧' },
+                { name: '命運之輪 (The Wheel of Fortune)', artist: '希羅尼穆斯・波希 (Hieronymus Bosch)', image_prompt: 'The Wheel of Fortune tarot card, in the fantastically detailed and surreal style of Hieronymus Bosch. The wheel is an intricate, bizarre machine, with strange, symbolic creatures and human figures rising and falling with its every turn, depicting the unpredictable nature of fate.', meaning: '改變、機會、命運、運氣' },
+                { name: '正義 (The Justice)', artist: '讓-萊昂·熱羅姆 (Jean-Léon Gérôme)', image_prompt: 'The Justice tarot card, rendered in the precise, realistic, and dramatic academic style of Jean-Léon Gérôme. A stoic figure holding balanced scales and an upright sword, seated on a throne, with a clear and unwavering gaze, symbolizing impartiality and truth.', meaning: '平衡、正義、法律、決策' },
+                { name: '倒吊人 (The Hanged Man)', artist: '奧迪隆・雷東 (Odilon Redon)', image_prompt: 'The Hanged Man tarot card, depicted in the symbolic, ethereal, and dreamlike style of Odilon Redon. A figure suspended upside down by one foot, surrounded by a luminous aura, conveying sacrifice, new perspectives, and spiritual understanding.', meaning: '犧牲、等待、不同視角、雙重性' },
+                { name: '死亡 (Death)', artist: '卡斯帕・戴維・弗里德里希 (Caspar David Friedrich)', image_prompt: 'The Death tarot card, in the sublime, often somber, and deeply symbolic Romantic style of Caspar David Friedrich. A skeleton figure on horseback, traversing a desolate landscape with a setting sun, representing transformation, endings, and new beginnings, with a sense of vastness and contemplation.', meaning: '結束、改變、重生、成長' },
+                { name: '節制 (Temperance)', artist: '皮耶-奧古斯特・雷諾瓦 (Pierre-Auguste Renoir)', image_prompt: 'Temperance tarot card, rendered in the soft, luminous, and harmonious Impressionistic style of Pierre-Auguste Renoir. An angel gracefully pouring liquid between two cups, symbolizing balance, moderation, and flow, with a gentle, diffused light.', meaning: '節制、和諧、溝通、靈活性' },
+                { name: '惡魔 (The Devil)', artist: '法蘭西斯・培根 (Francis Bacon)', image_prompt: 'The Devil tarot card, painted in the raw, visceral, and unsettling Expressionist style of Francis Bacon. A powerful, demonic figure with chains, surrounded by grotesque or distorted forms, evoking themes of addiction, bondage, and primal urges in a stark, isolated setting.', meaning: '慾望、世俗、上癮、物質主義' },
+                { name: '高塔 (The Tower)', artist: '卡拉瓦喬 (Caravaggio)', image_prompt: 'The Tower tarot card in the style of Caravaggio. Dramatic tenebrism, a stone tower struck by lightning, figures falling from the top in intense, emotional poses. The scene is chaotic and illuminated by a single, harsh light source.', meaning: '劇變、災難、揭露、幻滅' },
+                { name: '星星 (The Star)', artist: '喬治・秀拉 (Georges Seurat)', image_prompt: 'The Star tarot card in the pointillist style of Georges Seurat. A serene woman kneels by a pool of water under a large, bright star. The entire scene is composed of tiny, distinct dots of color, creating a shimmering, peaceful effect.', meaning: '希望、距離、平靜、想像力' },
+                { name: '月亮 (The Moon)', artist: '薩爾瓦多・達利 (Salvador Dalí)', image_prompt: 'The Moon tarot card in the surrealist style of Salvador Dalí. A dreamlike, bizarre landscape with two towers, a crayfish emerging from a pool, and two dogs howling at a moon with a human face. Melting clocks or other surreal elements could be present.', meaning: '幻象、焦慮、危險、隱藏的敵人' },
+                { name: '太陽 (The Sun)', artist: '亨利・馬蒂斯 (Henri Matisse)', image_prompt: 'The Sun tarot card, in the vibrant, joyful, and decorative Fauvist style of Henri Matisse. A radiant sun shining over happy, dancing children in a lush, simple landscape, filled with bold, unmixed colors and a sense of uninhibited freedom.', meaning: '成功、自由、喜悅、分享' },
+                { name: '審判 (Judgement)', artist: '米開朗基羅 (Michelangelo)', image_prompt: 'The Judgement tarot card, depicted in the monumental, dramatic, and expressive High Renaissance style of Michelangelo. Figures rising from graves, called forth by an angel blowing a trumpet, conveying themes of awakening, reckoning, and rebirth, with powerful anatomy and emotional intensity.', meaning: '召喚、因果、再生、解放' },
+                { name: '世界 (The World)', artist: '古斯塔夫・克林姆 (Gustav Klimt)', image_prompt: 'The World tarot card, in the ornate, golden, and symbolic style of Gustav Klimt. A central female figure dances within a victory wreath, adorned with intricate patterns and gold leaf. The four evangelists occupy the corners, rendered as stylized symbols.', meaning: '完成、結構、成功、完美' },
+                
+                // Minor Arcana - Wands
+                { name: '權杖一 (Ace of Wands)', artist: '新藝術運動 (Art Nouveau)', image_prompt: 'Ace of Wands tarot card, in the flowing, organic, and decorative Art Nouveau style. A hand emerging from clouds holding a blossoming wand, vibrant and full of potential.', meaning: '新的行動、新方向、大膽、創造' },
+                { name: '權杖二 (Two of Wands)', artist: '抽象表現主義 (Abstract Expressionism)', image_prompt: 'Two of Wands tarot card, in the energetic, gestural, and expressive style of Abstract Expressionism. A figure holding two wands, looking out at a bold, color-field landscape, contemplating decisions.', meaning: '猶豫不決、決定、規劃、勇氣' },
+                { name: '權杖三 (Three of Wands)', artist: '印象派 (Impressionism)', image_prompt: 'Three of Wands tarot card, in the soft, light-filled, and spontaneous style of Impressionism. A figure standing on a cliff, overlooking ships at sea, holding three wands, symbolizing initial success and outward vision.', meaning: '初步成功、貿易、領導力、合作' },
+                { name: '權杖四 (Four of Wands)', artist: '野獸派 (Fauvism)', image_prompt: 'Four of Wands tarot card, in the bold, vibrant, and expressive style of Fauvism. A joyous celebration with four wands forming a canopy, figures dancing with uninhibited color, symbolizing stability and harmony.', meaning: '穩定、慶祝、和諧、繁榮' },
+                { name: '權杖五 (Five of Wands)', artist: '立體派 (Cubism)', image_prompt: 'Five of Wands tarot card, in the fragmented, geometric, and multi-perspective style of Cubism. Figures engaged in a playful but chaotic struggle with five wands, reflecting conflict and inner turmoil.', meaning: '衝突、模仿、內心矛盾、掙扎' },
+                { name: '權杖六 (Six of Wands)', artist: '古典主義 (Classicism)', image_prompt: 'Six of Wands tarot card, in the balanced, noble, and idealized style of Classicism. A victorious figure on horseback, adorned with laurels, leading a procession with six wands, symbolizing triumph and recognition.', meaning: '勝利、自信、好消息、他人支持' },
+                { name: '權杖七 (Seven of Wands)', artist: '浪漫主義 (Romanticism)', image_prompt: 'Seven of Wands tarot card, in the dramatic, emotional, and individualistic style of Romanticism. A lone figure on a hill, defending against multiple wands, symbolizing challenges and perseverance.', meaning: '優勢、挑戰、防禦、勇氣' },
+                { name: '權杖八 (Eight of Wands)', artist: '未來主義 (Futurism)', image_prompt: 'Eight of Wands tarot card, in the dynamic, kinetic, and speed-obsessed style of Futurism. Eight wands flying through the air with lines of force, conveying rapid movement and sudden changes.', meaning: '速度、新事物到來、對齊、突然性' },
+                { name: '權杖九 (Nine of Wands)', artist: '超現實主義 (Surrealism)', image_prompt: 'Nine of Wands tarot card, in the dreamlike, illogical, and psychological style of Surrealism. A wounded but defiant figure leaning on a wand, with a surreal, unsettling background, symbolizing vigilance and hidden strength.', meaning: '警惕、防禦、毅力、等待' },
+                { name: '權杖十 (Ten of Wands)', artist: '現實主義 (Realism)', image_prompt: 'Ten of Wands tarot card, in the unvarnished, truthful, and often gritty style of Realism. A figure burdened by carrying ten wands, back bent, walking towards a distant town, depicting heavy responsibility and exhaustion.', meaning: '負擔、責任、成功、筋疲力盡' },
+                { name: '權杖侍者 (Page of Wands)', artist: '巴洛克 (Baroque)', image_prompt: 'Page of Wands tarot card, in the dramatic, energetic, and opulent Baroque style. A youthful figure holding a wand, with a curious and eager expression, standing amidst swirling drapery and rich textures, symbolizing new ideas and enthusiasm.', meaning: '活潑、天真、好消息、探索' },
+                { name: '權杖騎士 (Knight of Wands)', artist: '表現主義 (Expressionism)', image_prompt: 'Knight of Wands tarot card, in the bold, distorted, and emotionally charged Expressionist style. A knight on a rearing horse, holding a wand, with exaggerated features conveying passion, impulsiveness, and a drive for action.', meaning: '行動導向、熱情、衝動、尋求新奇' },
+                { name: '權杖皇后 (Queen of Wands)', artist: '象徵主義 (Symbolism)', image_prompt: 'Queen of Wands tarot card, in the mystical, evocative, and often enigmatic Symbolist style. A regal woman on a throne, holding a sunflower and a wand, with subtle symbols hinting at warmth, loyalty, and inner strength.', meaning: '幸福、溫暖、忠誠、善良' },
+                { name: '權杖國王 (King of Wands)', artist: '文藝復興 (Renaissance)', image_prompt: 'King of Wands tarot card, in the grand, dignified, and harmonious Renaissance style. A wise and authoritative king on a throne, holding a blossoming wand, embodying leadership and confidence, with a classical, balanced composition.', meaning: '領導力、不耐煩、權威、自信' },
+
+                // Minor Arcana - Cups
+                { name: '聖杯一 (Ace of Cups)', artist: '拉斐爾・聖齊奧 (Raphael Sanzio)', image_prompt: 'Ace of Cups tarot card, in the serene, harmonious, and graceful style of Raphael. A hand emerging from clouds, holding a cup overflowing with five streams of water, symbolizing new emotional beginnings and divine love.', meaning: '愛、喜悅、他人善意、新情感的開始' },
+                { name: '聖杯二 (Two of Cups)', artist: '浪漫主義 (Romanticism)', image_prompt: 'Two of Cups tarot card, in the passionate, idealized, and emotional Romantic style. Two figures exchanging cups, with a caduceus intertwined, signifying romance, partnership, and union in a picturesque setting.', meaning: '浪漫、平等、夥伴關係、結合' },
+                { name: '聖杯三 (Three of Cups)', artist: '印象派 (Impressionism)', image_prompt: 'Three of Cups tarot card, in the light-filled, joyful, and spontaneous style of Impressionism. Three figures raising cups in celebration, with vibrant colors and a sense of movement, reflecting happiness and community.', meaning: '慶祝、歡樂、派對、成功' },
+                { name: '聖杯四 (Four of Cups)', artist: '表現主義 (Expressionism)', image_prompt: 'Four of Cups tarot card, in the melancholic, introspective, and emotionally charged Expressionist style. A figure sitting under a tree, ignoring three offered cups, while a fourth appears from a cloud, conveying dissatisfaction and apathy.', meaning: '不滿、沉思、消極、無聊' },
+                { name: '聖杯五 (Five of Cups)', artist: '現實主義 (Realism)', image_prompt: 'Five of Cups tarot card, in the somber, unvarnished, and emotionally resonant style of Realism. A figure looking at three spilled cups, ignoring two upright ones, surrounded by a desolate landscape, depicting sorrow and focusing on loss.', meaning: '悲傷、專注於失去、沮喪、失望' },
+                { name: '聖杯六 (Six of Cups)', artist: '拉斐爾前派 (Pre-Raphaelite Brotherhood)', image_prompt: 'Six of Cups tarot card, in the detailed, nostalgic, and romanticized style of the Pre-Raphaelite Brotherhood. Children exchanging cups filled with flowers in a lush, idealized garden, evoking childhood memories and innocence.', meaning: '童年、初戀、回憶、關懷' },
+                { name: '聖杯七 (Seven of Cups)', artist: '超現實主義 (Surrealism)', image_prompt: 'Seven of Cups tarot card, in the dreamlike, illogical, and symbolic style of Surrealism. A figure contemplating seven floating cups, each containing a different fantastical image, representing choices, imagination, and confusion.', meaning: '選擇、想像力、夢想、困惑' },
+                { name: '聖杯八 (Eight of Cups)', artist: '野獸派 (Fauvism)', image_prompt: 'Eight of Cups tarot card, in the bold, emotionally charged, and vibrant Fauvist style. A figure walking away from eight stacked cups towards a dramatic, colorful landscape, symbolizing abandonment and the search for deeper meaning.', meaning: '放棄、不滿、追求、犧牲' },
+                { name: '聖杯九 (Nine of Cups)', artist: '文藝復興 (Renaissance)', image_prompt: 'Nine of Cups tarot card, in the opulent, harmonious, and celebratory Renaissance style. A figure proudly standing before nine neatly arranged cups, signifying contentment, wishes fulfilled, and material well-being.', meaning: '知足、炫耀、享受、夢想成真' },
+                { name: '聖杯十 (Ten of Cups)', artist: '新藝術運動 (Art Nouveau)', image_prompt: 'Ten of Cups tarot card, in the flowing, graceful, and idyllic Art Nouveau style. A rainbow arc of ten cups over a happy family scene in a lush landscape, symbolizing emotional fulfillment, harmony, and joy.', meaning: '家庭、和諧、圓滿、情感團體' },
+                { name: '聖杯侍者 (Page of Cups)', artist: '印象派 (Impressionism)', image_prompt: 'Page of Cups tarot card, in the soft, gentle, and ethereal Impressionistic style. A youthful figure holding a cup from which a fish emerges, with a dreamy expression, symbolizing new emotional messages and intuition.', meaning: '想像力、隨和、好學、人際訊息' },
+                { name: '聖杯騎士 (Knight of Cups)', artist: '浪漫主義 (Romanticism)', image_prompt: 'Knight of Cups tarot card, in the heroic, romanticized, and flowing Romantic style. A knight on a horse, offering a cup, conveying invitations, romance, and artistic pursuits.', meaning: '迷人、浪漫、不切實際、邀請' },
+                { name: '聖杯皇后 (Queen of Cups)', artist: '象徵主義 (Symbolism)', image_prompt: 'Queen of Cups tarot card, in the mysterious, introspective, and emotionally rich Symbolist style. A queen on a throne, gazing into an ornate cup, symbolizing tenderness, sensitivity, and nurturing wisdom.', meaning: '溫柔、敏感、滋養、情緒化' },
+                { name: '聖杯國王 (King of Cups)', artist: '古典主義 (Classicism)', image_prompt: 'King of Cups tarot card, in the dignified, balanced, and composed Classical style. A king on a throne, holding a cup and a scepter, symbolizing emotional maturity, compassion, and controlled emotions.', meaning: '奉獻、善良、同理心、兩面性' },
+
+                // Minor Arcana - Swords
+                { name: '寶劍一 (Ace of Swords)', artist: '表現主義 (Expressionism)', image_prompt: 'Ace of Swords tarot card, in the sharp, forceful, and emotionally intense Expressionist style. A hand emerging from a cloud, grasping an upright sword crowned with a wreath, symbolizing clarity, truth, and new challenges.', meaning: '極端、理性、決心、新挑戰' },
+                { name: '寶劍二 (Two of Swords)', artist: '超現實主義 (Surrealism)', image_prompt: 'Two of Swords tarot card, in the dreamlike, unsettling, and symbolic style of Surrealism. A blindfolded figure holding two crossed swords, seated before a crescent moon, reflecting stalemate, denial, and difficult choices.', meaning: '矛盾、僵局、抵抗、冷戰' },
+                { name: '寶劍三 (Three of Swords)', artist: '現實主義 (Realism)', image_prompt: 'Three of Swords tarot card, in the stark, painful, and unembellished Realist style. A heart pierced by three swords, with storm clouds overhead, depicting sorrow, betrayal, and emotional pain.', meaning: '悲傷、失去、淨化、延遲' },
+                { name: '寶劍四 (Four of Swords)', artist: '古典主義 (Classicism)', image_prompt: 'Four of Swords tarot card, in the calm, composed, and architectural style of Classicism. A knight in repose, lying on a tomb with a stained-glass window, symbolizing rest, recovery, and contemplation.', meaning: '休息、沉思、準備、隱居' },
+                { name: '寶劍五 (Five of Swords)', artist: '野獸派 (Fauvism)', image_prompt: 'Five of Swords tarot card, in the jarring, expressive, and boldly colored Fauvist style. A figure smugly collecting swords, while two defeated figures walk away, depicting conflict, humiliation, and hollow victories.', meaning: '爭議、羞辱、無意義的掙扎、失去' },
+                { name: '寶劍六 (Six of Swords)', artist: '印象派 (Impressionism)', image_prompt: 'Six of Swords tarot card, in the serene, diffused light, and melancholic atmosphere of Impressionism. Figures in a small boat, being punted across a calm body of water, leaving behind a troubled shore, symbolizing transition, healing, and moving on.', meaning: '沮喪、療癒、恢復、獨處' },
+                { name: '寶劍七 (Seven of Swords)', artist: '巴洛克 (Baroque)', image_prompt: 'Seven of Swords tarot card, in the dramatic, chiaroscuro, and dynamic Baroque style. A figure stealthily making off with five swords, leaving two behind, with a sense of urgency and cunning, symbolizing deception and strategy.', meaning: '艱鉅的任務、欺騙、孤立、自信' },
+                { name: '寶劍八 (Eight of Swords)', artist: '表現主義 (Expressionism)', image_prompt: 'Eight of Swords tarot card, in the suffocating, anxious, and distorted style of Expressionism. A blindfolded figure bound by eight swords, feeling trapped and isolated in a restrictive landscape, conveying feelings of limitation and fear.', meaning: '限制、壓迫、自我欺騙、困惑' },
+                { name: '寶劍九 (Nine of Swords)', artist: '超現實主義 (Surrealism)', image_prompt: 'Nine of Swords tarot card, in the dark, nightmarish, and psychologically intense style of Surrealism. A figure sitting upright in bed, head in hands, with nine swords hanging ominously above, depicting nightmares, anxiety, and despair.', meaning: '惡夢、失眠、痛苦、恐懼' },
+                { name: '寶劍十 (Ten of Swords)', artist: '浪漫主義 (Romanticism)', image_prompt: 'Ten of Swords tarot card, in the dramatic, final, and emotionally charged Romantic style. A figure lying prostrate, pierced by ten swords, in a desolate setting with a distant sunrise, symbolizing ultimate endings and the promise of a new dawn.', meaning: '新開始、結束、痛苦、失敗' },
+                { name: '寶劍侍者 (Page of Swords)', artist: '新藝術運動 (Art Nouveau)', image_prompt: 'Page of Swords tarot card, in the flowing, elegant, and decorative Art Nouveau style. A youthful figure holding a sword, poised and alert, with dynamic lines suggesting curiosity and a thirst for knowledge, amidst stylized natural elements.', meaning: '偵察、警覺、防禦、謠言' },
+                { name: '寶劍騎士 (Knight of Swords)', artist: '未來主義 (Futurism)', image_prompt: 'Knight of Swords tarot card, in the dynamic, aggressive, and speed-driven Futurist style. A knight charging forward on a horse, brandishing a sword, with lines of force emphasizing rapid, almost reckless, action and determination.', meaning: '魯莽、衝動、競爭、口頭爭執' },
+                { name: '寶劍皇后 (Queen of Swords)', artist: '象徵主義 (Symbolism)', image_prompt: 'Queen of Swords tarot card, in the sharp, discerning, and often solitary Symbolist style. A regal woman on a throne, holding a sword, with a clear, penetrating gaze, symbolizing intellectual clarity, independence, and a sometimes cutting truth.', meaning: '洞察力、堅持原則、理性、冷酷' },
+                { name: '寶劍國王 (King of Swords)', artist: '文藝復興 (Renaissance)', image_prompt: 'King of Swords tarot card, in the powerful, intellectual, and authoritative Renaissance style. A king on a throne, holding an upright sword, with a thoughtful and commanding presence, embodying logic, justice, and clear judgment.', meaning: '專業人士、嚴肅、智慧、直接' },
+
+                // Minor Arcana - Pentacles
+                { name: '錢幣一 (Ace of Pentacles)', artist: '文藝復興 (Renaissance)', image_prompt: 'Ace of Pentacles tarot card, in the rich, detailed, and grounded Renaissance style. A hand emerging from clouds, offering a large, gleaming pentacle, symbolizing new financial beginnings, opportunity, and material abundance.', meaning: '新物質計劃、安全、享受、豐盛' },
+                { name: '錢幣二 (Two of Pentacles)', artist: '巴洛克 (Baroque)', image_prompt: 'Two of Pentacles tarot card, in the dynamic, lively, and sometimes playful Baroque style. A figure juggling two pentacles in an infinity loop, with ships tossing in the background, conveying balance, flexibility, and managing multiple priorities.', meaning: '靈活性、平衡、選擇、改變' },
+                { name: '錢幣三 (Three of Pentacles)', artist: '現實主義 (Realism)', image_prompt: 'Three of Pentacles tarot card, in the precise, observational, and detailed Realist style. An apprentice, a monk, and an architect collaborating on a cathedral design, symbolizing teamwork, mastery, and recognition for skills.', meaning: '合作、協調、榮譽、才能' },
+                { name: '錢幣四 (Four of Pentacles)', artist: '表現主義 (Expressionism)', image_prompt: 'Four of Pentacles tarot card, in the rigid, controlling, and sometimes anxious Expressionist style. A figure clutching four pentacles tightly, one on his head, two under his feet, with a sense of possessiveness and fear of loss.', meaning: '控制狂、繼承、利潤、吝嗇鬼' },
+                { name: '錢幣五 (Five of Pentacles)', artist: '浪漫主義 (Romanticism)', image_prompt: 'Five of Pentacles tarot card, in the somber, empathetic, and sometimes desolate Romantic style. Two figures struggling through a snowstorm past a brightly lit church window, symbolizing poverty, hardship, and feeling excluded.', meaning: '貧困、忠誠、困苦、缺乏' },
+                { name: '錢幣六 (Six of Pentacles)', artist: '古典主義 (Classicism)', image_prompt: 'Six of Pentacles tarot card, in the balanced, moral, and orderly Classical style. A figure distributing coins to two beggars, with a sense of justice, generosity, and the dynamics of giving and receiving.', meaning: '慈善、慷慨、計算、給予與接受' },
+                { name: '錢幣七 (Seven of Pentacles)', artist: '印象派 (Impressionism)', image_prompt: 'Seven of Pentacles tarot card, in the reflective, patient, and atmospheric Impressionistic style. A farmer gazing at his growing crops, symbolizing investment, patience, and evaluating the fruits of labor.', meaning: '收穫、停頓、反思、重新規劃' },
+                { name: '錢幣八 (Eight of Pentacles)', artist: '新藝術運動 (Art Nouveau)', image_prompt: 'Eight of Pentacles tarot card, in the intricate, flowing, and craftsmanship-focused Art Nouveau style. An artisan meticulously carving eight pentacles, surrounded by decorative elements, symbolizing diligence, skill, and dedication to craft.', meaning: '勤奮、注重細節、精打細算、努力工作' },
+                { name: '錢幣九 (Nine of Pentacles)', artist: '象徵主義 (Symbolism)', image_prompt: 'Nine of Pentacles tarot card, in the elegant, solitary, and aesthetically rich Symbolist style. A refined woman standing in a lush vineyard with a falcon, symbolizing independence, self-sufficiency, and refined enjoyment of abundance.', meaning: '自信、洞察力、獨立、豐盛' },
+                { name: '錢幣十 (Ten of Pentacles)', artist: '荷蘭黃金時代 (Dutch Golden Age)', image_prompt: 'Ten of Pentacles tarot card, in the detailed, prosperous, and domestic style of the Dutch Golden Age. A multi-generational family gathered in a rich, architectural setting, with ten pentacles forming an arch, symbolizing wealth, legacy, and family heritage.', meaning: '財富、商業團體、繼承、缺乏情感交流' },
+                { name: '錢幣侍者 (Page of Pentacles)', artist: '超現實主義 (Surrealism)', image_prompt: 'Page of Pentacles tarot card, in the curious, grounded, and slightly whimsical Surrealist style. A youthful figure holding a pentacle, gazing intently at it, with a landscape that subtly shifts, symbolizing new practical ventures and a studious approach to material matters.', meaning: '認真、成熟、財務消息、缺乏想像力' },
+                { name: '錢幣騎士 (Knight of Pentacles)', artist: '現實主義 (Realism)', image_prompt: 'Knight of Pentacles tarot card, in the sturdy, dependable, and practical Realist style. A knight on a solid horse, holding a pentacle, moving slowly and deliberately through a field, symbolizing hard work, responsibility, and a methodical approach.', meaning: '不敏感、吝嗇、毅力、工作狂' },
+                { name: '錢幣皇后 (Queen of Pentacles)', artist: '拉斐爾前派 (Pre-Raphaelite Brotherhood)', image_prompt: 'Queen of Pentacles tarot card, in the nurturing, earthy, and richly detailed Pre-Raphaelite style. A queen seated in a bountiful garden, holding a pentacle, surrounded by nature and nurturing elements, symbolizing practicality, generosity, and maternal care.', meaning: '慈善、關心他人、家庭主婦、實用性' },
+                { name: '錢幣國王 (King of Pentacles)', artist: '荷蘭黃金時代 (Dutch Golden Age)', image_prompt: 'King of Pentacles tarot card, in the prosperous, authoritative, and robust style of the Dutch Golden Age. A king on a throne, surrounded by symbols of wealth and security, holding a pentacle, embodying financial success, stability, and a practical mindset.', meaning: '財富、勤奮、謹慎、值得信賴' }
+            ];
+
+            const inputSection = document.getElementById('input-section');
+            const resultSection = document.getElementById('result-section');
+            const drawButton = document.getElementById('draw-button');
+            const redrawButton = document.getElementById('redraw-button');
+            const topicSelector = document.getElementById('topic-selector');
+            const errorMessage = document.getElementById('error-message');
+            const cardDisplays = document.querySelectorAll('.card-display');
+            const interpretationLoading = document.getElementById('interpretation-loading');
+            const interpretationContent = document.getElementById('interpretation-content');
+            
+            let selectedTopic = null;
+
+            topicSelector.addEventListener('click', (e) => {
+                if (e.target.dataset.topic) {
+                    topicSelector.querySelectorAll('.topic-btn').forEach(btn => btn.classList.remove('selected'));
+                    e.target.classList.add('selected');
+                    selectedTopic = e.target.dataset.topic;
+                    errorMessage.textContent = '';
+                }
+            });
+
+            drawButton.addEventListener('click', () => {
+                if (!selectedTopic) {
+                    showError('請選擇您想詢問的主題。');
+                    return;
+                }
+                drawCardSpread();
+            });
+            
+            redrawButton.addEventListener('click', () => {
+                inputSection.style.display = 'block';
+                resultSection.style.display = 'none';
+
+                cardDisplays.forEach(display => {
+                    display.querySelector('.card-container').classList.remove('flipped');
+                    display.querySelector('.card-image').classList.add('hidden');
+                    // Reset card name, artist, and meaning
+                    display.querySelector('.card-name').textContent = '';
+                    display.querySelector('.card-artist').textContent = '';
+                    display.querySelector('.card-meaning').textContent = '';
+                    const loader = display.querySelector('.loading-indicator');
+                    if(loader) loader.classList.remove('hidden');
+                });
+                
+                selectedTopic = null;
+                topicSelector.querySelectorAll('.topic-btn').forEach(btn => btn.classList.remove('selected'));
+                errorMessage.textContent = '';
+            });
+
+            function showError(message) {
+                errorMessage.textContent = message;
+                setTimeout(() => errorMessage.textContent = '', 3000);
+            }
+            
+            function shuffleArray(array) {
+                const newArr = array.slice();
+                for (let i = newArr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+                }
+                return newArr;
+            }
+
+            async function generateImage(prompt) {
+                const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+                const result = await response.json();
+
+                if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
+                    return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                } else {
+                    throw new Error('No image data in API response.');
+                }
+            }
+            
+            async function getCombinedInterpretation(cards, topic) {
+                const prompt = `你是一位專業且溫暖的塔羅牌解讀師。請根據以下的三張牌陣，為使用者提供關於「${topic}」的綜合性解讀。
+                - 過去: ${cards[0].name} (${cards[0].meaning})
+                - 現在: ${cards[1].name} (${cards[1].meaning})
+                - 未來: ${cards[2].name} (${cards[2].meaning})
+
+                請用散文的形式，流暢地將三張牌的意義串連起來，說明它們如何共同影響使用者的狀況。從過去的基礎，談到現在的處境與挑戰，最後給予對未來的展望與建議。語氣請充滿同理心與啟發性，避免使用條列式說明。`;
+                
+                let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = { contents: chatHistory };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`Text generation API failed with status ${response.status}`);
+                const result = await response.json();
+                
+                if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    return result.candidates[0].content.parts[0].text.replace(/\n/g, '<br>');
+                } else {
+                    throw new Error('Invalid text generation response.');
+                }
+            }
+
+            async function drawCardSpread() {
+                inputSection.style.display = 'none';
+                resultSection.style.display = 'block';
+                interpretationContent.classList.add('hidden');
+                interpretationLoading.style.display = 'flex';
+
+                const shuffledDeck = shuffleArray(tarotData);
+                const drawnCards = shuffledDeck.slice(0, 3);
+
+                // Animate card flips
+                setTimeout(() => {
+                    cardDisplays.forEach((display, index) => {
+                             setTimeout(() => display.querySelector('.card-container').classList.add('flipped'), index * 300);
+                    });
+                }, 100);
+
+                // Set card text immediately
+                drawnCards.forEach((card, index) => {
+                    const display = cardDisplays[index];
+                    display.querySelector('.card-name').textContent = card.name;
+                    display.querySelector('.card-artist').textContent = `藝術家風格: ${card.artist}`;
+                    display.querySelector('.card-meaning').textContent = `牌義: ${card.meaning}`; // Display card meaning
+                });
+                
+                // --- Sequential API calls ---
+                // 1. Generate images one by one first
+                for (let i = 0; i < drawnCards.length; i++) {
+                    const card = drawnCards[i];
+                    const display = cardDisplays[i];
+                    try {
+                        const imageUrl = await generateImage(card.image_prompt);
+                        const img = display.querySelector('.card-image');
+                        img.src = imageUrl;
+                        img.onload = () => {
+                            display.querySelector('.loading-indicator').classList.add('hidden');
+                            img.classList.remove('hidden');
+                        };
+                        if (img.complete) {
+                            img.onload();
+                        }
+                    } catch (error) {
+                        console.error(`Card ${i} image error:`, error);
+                        const img = display.querySelector('.card-image');
+                        img.src = `https://placehold.co/600x960/cc0000/FFFFFF?text=圖片生成失敗&font=noto-serif-tc`;
+                        const loader = display.querySelector('.loading-indicator');
+                        if (loader) loader.classList.add('hidden');
+                        img.classList.remove('hidden');
+                    }
+                }
+                
+                // 2. Then, generate the text interpretation
+                try {
+                    const text = await getCombinedInterpretation(drawnCards, selectedTopic);
+                    interpretationContent.innerHTML = text;
+                } catch (error) {
+                    console.error('Interpretation error:', error);
+                    interpretationContent.textContent = '抱歉，綜合解讀生成失敗，但您仍可參考三張卡牌的獨立意義。';
+                } finally {
+                    interpretationLoading.style.display = 'none';
+                    interpretationContent.classList.remove('hidden');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+
+
